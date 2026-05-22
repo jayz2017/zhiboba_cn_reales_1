@@ -1,0 +1,13 @@
+INFO:     127.0.0.1:60152 - "GET /docs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52955 - "GET /docs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52955 - "GET /openapi.json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52955 - "GET /%40vite/client HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57219 - "POST /api/v1/player-alias/sync HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53207 - "POST /api/v1/player-alias/sync HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51011 - "POST /api/v1/player-alias/sync HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65027 - "GET /docs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52373 - "GET /docs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52373 - "GET /openapi.json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52373 - "GET /%40vite/client HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61476 - "POST /api/v1/schedule/zhiboba/sync?year=2025 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53059 - "GET /openapi.json HTTP/1.1" 200 OK

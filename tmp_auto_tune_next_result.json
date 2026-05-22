@@ -1,0 +1,260 @@
+{
+  "selected_target": {
+    "saishi_id": "1780736",
+    "home_team": "雷霆",
+    "visit_team": "火箭",
+    "sdate": "2025-10-22",
+    "start_time": null
+  },
+  "result": {
+    "processed": true,
+    "saishi_id": "1780736",
+    "home_team": "雷霆",
+    "visit_team": "火箭",
+    "sdate": "2025-10-22",
+    "start_time": null,
+    "fetch_result": {
+      "pages": 191,
+      "events": 1727,
+      "filtered": 210,
+      "finished": true,
+      "last_cursor": 1960
+    },
+    "sync_result": {
+      "pages": 191,
+      "events": 1727,
+      "filtered": 210,
+      "finished": true,
+      "last_cursor": 1960,
+      "segmented_examples": [
+        {
+          "live_sid": 34,
+          "pid_text": "第1节",
+          "live_text": "球权火箭！阿门带球！",
+          "cleaned_text": "球权火箭阿门带球",
+          "segmented_text": "球权\\火箭\\阿门·汤普森\\带球",
+          "current_player_name": "亚瑟",
+          "score_diff": 0,
+          "score_team_side": "",
+          "score_points": null,
+          "home_score_change": null,
+          "visit_score_change": null,
+          "home_score": 0,
+          "visit_score": 0
+        },
+        {
+          "live_sid": 35,
+          "pid_text": "第1节",
+          "live_text": "左侧外线落位！",
+          "cleaned_text": "左侧外线落位",
+          "segmented_text": "左侧\\外线\\落位",
+          "current_player_name": "亚瑟",
+          "score_diff": 0,
+          "score_team_side": "",
+          "score_points": null,
+          "home_score_change": 0,
+          "visit_score_change": 0,
+          "home_score": 0,
+          "visit_score": 0
+        },
+        {
+          "live_sid": 36,
+          "pid_text": "第1节",
+          "live_text": "递给埃迪！",
+          "cleaned_text": "递给埃迪",
+          "segmented_text": "递给\\埃迪",
+          "current_player_name": "亚瑟",
+          "score_diff": 0,
+          "score_team_side": "",
+          "score_points": null,
+          "home_score_change": 0,
+          "visit_score_change": 0,
+          "home_score": 0,
+          "visit_score": 0
+        },
+        {
+          "live_sid": 37,
+          "pid_text": "第1节",
+          "live_text": "亚当斯落左路！",
+          "cleaned_text": "亚当斯落左路",
+          "segmented_text": "史蒂文·亚当斯\\落\\左路",
+          "current_player_name": "亚瑟",
+          "score_diff": 0,
+          "score_team_side": "",
+          "score_points": null,
+          "home_score_change": 0,
+          "visit_score_change": 0,
+          "home_score": 0,
+          "visit_score": 0
+        },
+        {
+          "live_sid": 38,
+          "pid_text": "第1节",
+          "live_text": "找底角杜兰特！",
+          "cleaned_text": "找底角杜兰特",
+          "segmented_text": "找\\底角\\凯文·杜兰特",
+          "current_player_name": "亚瑟",
+          "score_diff": 0,
+          "score_team_side": "",
+          "score_points": null,
+          "home_score_change": 0,
+          "visit_score_change": 0,
+          "home_score": 0,
+          "visit_score": 0
+        },
+        {
+          "live_sid": 39,
+          "pid_text": "第1节",
+          "live_text": "被逼抢出界了！",
+          "cleaned_text": "被逼抢出界了",
+          "segmented_text": "被\\逼抢\\出界\\了",
+          "current_player_name": "亚瑟",
+          "score_diff": 0,
+          "score_team_side": "",
+          "score_points": null,
+          "home_score_change": 0,
+          "visit_score_change": 0,
+          "home_score": 0,
+          "visit_score": 0
+        },
+        {
+          "live_sid": 40,
+          "pid_text": "第1节",
+          "live_text": "球开弧顶阿门！",
+          "cleaned_text": "球开弧顶阿门",
+          "segmented_text": "球开\\弧顶\\阿门·汤普森",
+          "current_player_name": "亚瑟",
+          "score_diff": 0,
+          "score_team_side": "",
+          "score_points": null,
+          "home_score_change": 0,
+          "visit_score_change": 0,
+          "home_score": 0,
+          "visit_score": 0
+        },
+        {
+          "live_sid": 41,
+          "pid_text": "第1节",
+          "live_text": "递给杜兰特！",
+          "cleaned_text": "递给杜兰特",
+          "segmented_text": "递给\\凯文·杜兰特",
+          "current_player_name": "亚瑟",
+          "score_diff": 0,
+          "score_team_side": "",
+          "score_points": null,
+          "home_score_change": 0,
+          "visit_score_change": 0,
+          "home_score": 0,
+          "visit_score": 0
+        },
+        {
+          "live_sid": 42,
+          "pid_text": "第1节",
+          "live_text": "回球弧顶阿门！",
+          "cleaned_text": "回球弧顶阿门",
+          "segmented_text": "回球\\弧顶\\阿门·汤普森",
+          "current_player_name": "亚瑟",
+          "score_diff": 0,
+          "score_team_side": "",
+          "score_points": null,
+          "home_score_change": 0,
+          "visit_score_change": 0,
+          "home_score": 0,
+          "visit_score": 0
+        },
+        {
+          "live_sid": 43,
+          "pid_text": "第1节",
+          "live_text": "对位华莱士！",
+          "cleaned_text": "对位华莱士",
+          "segmented_text": "对位\\卡森·华莱士",
+          "current_player_name": "亚瑟",
+          "score_diff": 0,
+          "score_team_side": "",
+          "score_points": null,
+          "home_score_change": 0,
+          "visit_score_change": 0,
+          "home_score": 0,
+          "visit_score": 0
+        }
+      ]
+    },
+    "tune_result": {
+      "applied_rule_count": 0,
+      "applied_rules": []
+    },
+    "rerun_result": null,
+    "segmented_examples": [
+      {
+        "live_sid": 34,
+        "pid_text": "第1节",
+        "live_pid": "1",
+        "live_text": "球权火箭！阿门带球！",
+        "segmented_text": "球权\\火箭\\阿门·汤普森\\带球"
+      },
+      {
+        "live_sid": 35,
+        "pid_text": "第1节",
+        "live_pid": "1",
+        "live_text": "左侧外线落位！",
+        "segmented_text": "左侧\\外线\\落位"
+      },
+      {
+        "live_sid": 36,
+        "pid_text": "第1节",
+        "live_pid": "1",
+        "live_text": "递给埃迪！",
+        "segmented_text": "递给\\埃迪"
+      },
+      {
+        "live_sid": 37,
+        "pid_text": "第1节",
+        "live_pid": "1",
+        "live_text": "亚当斯落左路！",
+        "segmented_text": "史蒂文·亚当斯\\落\\左路"
+      },
+      {
+        "live_sid": 38,
+        "pid_text": "第1节",
+        "live_pid": "1",
+        "live_text": "找底角杜兰特！",
+        "segmented_text": "找\\底角\\凯文·杜兰特"
+      },
+      {
+        "live_sid": 39,
+        "pid_text": "第1节",
+        "live_pid": "1",
+        "live_text": "被逼抢出界了！",
+        "segmented_text": "被\\逼抢\\出界\\了"
+      },
+      {
+        "live_sid": 40,
+        "pid_text": "第1节",
+        "live_pid": "1",
+        "live_text": "球开弧顶阿门！",
+        "segmented_text": "球开\\弧顶\\阿门·汤普森"
+      },
+      {
+        "live_sid": 41,
+        "pid_text": "第1节",
+        "live_pid": "1",
+        "live_text": "递给杜兰特！",
+        "segmented_text": "递给\\凯文·杜兰特"
+      },
+      {
+        "live_sid": 42,
+        "pid_text": "第1节",
+        "live_pid": "1",
+        "live_text": "回球弧顶阿门！",
+        "segmented_text": "回球\\弧顶\\阿门·汤普森"
+      },
+      {
+        "live_sid": 43,
+        "pid_text": "第1节",
+        "live_pid": "1",
+        "live_text": "对位华莱士！",
+        "segmented_text": "对位\\卡森·华莱士"
+      }
+    ]
+  }
+}

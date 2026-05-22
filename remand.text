@@ -1,0 +1,34 @@
+MySQL 基础配置 + DDL/INSERT 存储与统一调用区
+
+- 配置（环境变量）： config.py
+- 连接池/Session： database.py
+- DDL 文件（表结构、索引、约束、证据链字段）： 001_init_schema.sql
+- INSERT 文件（seed 示例）： 001_seed.sql
+- 统一加载/执行入口（DDL/DML 注册与 apply_*）： sql_registry.py
+NBA 赛程信息解析读取目录
+
+- 解析器： parser.py
+- 入库/摄取服务（raw 存档 + 幂等 upsert game）： service.py
+NBA 直播文本读取 + 自然语言处理（分词）目录
+
+- 直播文本读取： reader.py
+- 分词： tokenizer.py
+从数据库获取直播内容并抽取语义关系目录
+
+- 语义抽取与入库（按 game_id + source 拉取 event 并落库 relation）： extractor.py
+Request 公共封装区
+
+- HTTP Client（requests + 超时 + JSON/text）： client.py
+爬虫请求重试机制封装目录
+
+- 重试装饰器（指数退避 + 最大次数，可配置异常类型）： retry.py
+严格架构设计流程文件（门禁/产物/检查清单）
+
+- 总览： 00_overview.md
+- 需求： 01_requirements.md
+- 领域/数据建模： 02_domain_data_model.md
+- API： 03_api_design.md
+- 数据库： 04_database_design.md
+- 采集/NLP/语义流水线： 05_crawler_nlp_pipeline.md
+- 安全与可观测性： 06_security_observability.md
+- 交付验收： 07_delivery_acceptance.md
