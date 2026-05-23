@@ -1,3 +1,4 @@
+# DEPRECATED: 此模块为旧版实现，与主模块数据格式不一致，保留仅供参考
 from __future__ import annotations
 
 from dataclasses import dataclass

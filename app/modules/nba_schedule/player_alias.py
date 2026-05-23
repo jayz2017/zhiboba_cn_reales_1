@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import json
-import random
 import re
+import time
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
@@ -33,7 +33,7 @@ def build_player_alias_url(game_date: date, saishi_id: str) -> str:
 
 
 def build_player_alias_params() -> dict[str, str]:
-    return {"get": str(random.random())}
+    return {"get": str(int(time.time() * 1000))}
 
 
 def iter_candidate_game_dates(game_date: date) -> list[date]:
@@ -72,7 +72,9 @@ def list_alias_match_sources(db: Session, saishi_id: str | None = None) -> list[
     return matches
 
 
-def _collect_alias_records(data: Any, seen: set[tuple[str, str]], records: list[PlayerAliasRecord]) -> None:
+def _collect_alias_records(data: Any, seen: set[tuple[str, str]], records: list[PlayerAliasRecord], max_depth: int = 10, _depth: int = 0) -> None:
+    if _depth > max_depth:
+        return
     if isinstance(data, dict):
         player_id = data.get("player_id")
         alias_name = data.get("player_name_cn")
@@ -86,12 +88,12 @@ def _collect_alias_records(data: Any, seen: set[tuple[str, str]], records: list[
                     records.append(PlayerAliasRecord(player_id=normalized_player_id, alias_name=normalized_alias_name))
 
         for value in data.values():
-            _collect_alias_records(value, seen=seen, records=records)
+            _collect_alias_records(value, seen=seen, records=records, max_depth=max_depth, _depth=_depth + 1)
         return
 
     if isinstance(data, list):
         for item in data:
-            _collect_alias_records(item, seen=seen, records=records)
+            _collect_alias_records(item, seen=seen, records=records, max_depth=max_depth, _depth=_depth + 1)
 
 
 def parse_player_alias_payload(payload: Any) -> list[PlayerAliasRecord]:
@@ -206,7 +208,13 @@ def has_player_alias_index(db: Session, index_name: str) -> bool:
     return row is not None
 
 
+_player_alias_table_ensured = False
+
+
 def ensure_player_alias_table(db: Session) -> None:
+    global _player_alias_table_ensured
+    if _player_alias_table_ensured:
+        return
     db.execute(text(_DDL_CREATE_PLAYER_ALIAS_TABLE))
     if not has_player_alias_column(db=db, column_name="type"):
         db.execute(text(_DDL_ADD_PLAYER_ALIAS_TYPE_COLUMN))
@@ -220,6 +228,7 @@ def ensure_player_alias_table(db: Session) -> None:
         db.execute(text(_DDL_ADD_PLAYER_ALIAS_PLAYER_ID_INDEX))
     db.execute(text(_SQL_BACKFILL_PLAYER_ALIAS_TYPE), {"type": PLAYER_ALIAS_DEFAULT_TYPE})
     db.commit()
+    _player_alias_table_ensured = True
 
 
 _SQL_INSERT_PLAYER_ALIAS = """
@@ -235,19 +244,17 @@ def upsert_player_alias_records(db: Session, records: list[PlayerAliasRecord]) -
     if not records:
         return 0
 
-    inserted = 0
-    for record in records:
-        db.execute(
-            text(_SQL_INSERT_PLAYER_ALIAS),
-            {
-                "player_id": record.player_id,
-                "alias_name": record.alias_name,
-                "type": PLAYER_ALIAS_DEFAULT_TYPE,
-            },
-        )
-        inserted += 1
+    params_list = [
+        {
+            "player_id": record.player_id,
+            "alias_name": record.alias_name,
+            "type": PLAYER_ALIAS_DEFAULT_TYPE,
+        }
+        for record in records
+    ]
+    db.execute(text(_SQL_INSERT_PLAYER_ALIAS), params_list)
     db.commit()
-    return inserted
+    return len(params_list)
 
 
 def fetch_player_alias_records(http_client: HttpClient, source: MatchAliasSource) -> list[PlayerAliasRecord]:

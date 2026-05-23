@@ -9,6 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.http_resources import QIUMIBAO_TEAM_RANKING_API_URL, build_team_ranking_headers
+from app.utils.db_helpers import to_int, to_decimal
 from app.utils.http.client import HttpClient
 
 
@@ -186,7 +187,13 @@ ON DUPLICATE KEY UPDATE
 """.strip()
 
 
+_game_list_table_ensured = False
+
+
 def ensure_game_list_table(db: Session) -> None:
+    global _game_list_table_ensured
+    if _game_list_table_ensured:
+        return
     db.execute(text(_DDL_CREATE_GAME_LIST_TABLE))
     for column_name, alter_sql in _ALTER_GAME_LIST_COLUMNS.items():
         row = db.execute(
@@ -207,6 +214,7 @@ def ensure_game_list_table(db: Session) -> None:
     db.execute(text("ALTER TABLE game_list MODIFY COLUMN guest_win_rate DECIMAL(5,1) NULL"))
     db.execute(text("ALTER TABLE game_list MODIFY COLUMN home_win_rate DECIMAL(5,1) NULL"))
     db.commit()
+    _game_list_table_ensured = True
 
 
 def normalize_start_time(value: object) -> time | None:
@@ -223,34 +231,8 @@ def normalize_start_time(value: object) -> time | None:
     return None
 
 
-def _to_int(value: Any) -> int | None:
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str):
-        stripped = value.strip()
-        if stripped.isdigit():
-            return int(stripped)
-    return None
-
-
-def _to_decimal(value: Any) -> Decimal | None:
-    if isinstance(value, Decimal):
-        return value
-    if isinstance(value, (int, float)):
-        return Decimal(str(value))
-    if isinstance(value, str):
-        stripped = value.strip().replace("%", "")
-        if not stripped or stripped == "-":
-            return None
-        try:
-            return Decimal(stripped)
-        except Exception:
-            return None
-    return None
-
-
 def _to_win_rate_decimal(value: Any) -> Decimal | None:
-    decimal_value = _to_decimal(value)
+    decimal_value = to_decimal(value)
     if decimal_value is None:
         return None
     return decimal_value.quantize(Decimal("0.1"))
@@ -315,13 +297,13 @@ def parse_team_ranking_payload(payload: Any) -> dict[str, TeamRankingRecord]:
             result[normalized_team_id] = TeamRankingRecord(
                 team_id=normalized_team_id,
                 team_name=_normalize_team_name(item.get("球队名称") or item.get("球队")),
-                rank=_to_int(item.get("排名")),
-                wins=_to_int(item.get("胜")),
-                losses=_to_int(item.get("负")),
+                rank=to_int(item.get("排名")),
+                wins=to_int(item.get("胜")),
+                losses=to_int(item.get("负")),
                 win_rate=_to_win_rate_decimal(item.get("胜率")),
                 recent_form=item.get("近况").strip() if isinstance(item.get("近况"), str) and item.get("近况").strip() else None,
                 wins_losses_text=item.get("胜/负").strip() if isinstance(item.get("胜/负"), str) and item.get("胜/负").strip() else None,
-                win_diff=_to_decimal(item.get("胜差")),
+                win_diff=to_decimal(item.get("胜差")),
                 zone=zone_code,
             )
     return result
@@ -401,43 +383,41 @@ def upsert_game_list_records(db: Session, records: list[GameListRecord]) -> int:
     if not records:
         return 0
 
-    affected = 0
-    for record in records:
-        db.execute(
-            text(_SQL_UPSERT_GAME_LIST),
-            {
-                "id": record.id,
-                "home_team": record.home_team,
-                "visit_team": record.visit_team,
-                "home_id": record.home_id,
-                "guest_id": record.guest_id,
-                "home_ls": record.home_ls,
-                "guest_ls": record.guest_ls,
-                "guest_play_off_win": record.guest_play_off_win,
-                "guest_rank": record.guest_rank,
-                "guest_win_diff": record.guest_win_diff,
-                "guest_win_or_filr": record.guest_win_or_filr,
-                "guest_win_rate": record.guest_win_rate,
-                "guest_zone": record.guest_zone,
-                "home_play_off_win": record.home_play_off_win,
-                "home_rank": record.home_rank,
-                "home_win_diff": record.home_win_diff,
-                "home_win_or_filr": record.home_win_or_filr,
-                "home_win_rate": record.home_win_rate,
-                "home_zone": record.home_zone,
-                "period_cn": record.period_cn,
-                "create_date": record.create_date,
-                "end_date": record.end_date,
-                "season_type": record.season_type,
-                "sdate": record.sdate,
-                "start": record.start,
-                "current_time": record.current_time,
-                "type": record.type,
-            },
-        )
-        affected += 1
+    params_list = [
+        {
+            "id": record.id,
+            "home_team": record.home_team,
+            "visit_team": record.visit_team,
+            "home_id": record.home_id,
+            "guest_id": record.guest_id,
+            "home_ls": record.home_ls,
+            "guest_ls": record.guest_ls,
+            "guest_play_off_win": record.guest_play_off_win,
+            "guest_rank": record.guest_rank,
+            "guest_win_diff": record.guest_win_diff,
+            "guest_win_or_filr": record.guest_win_or_filr,
+            "guest_win_rate": record.guest_win_rate,
+            "guest_zone": record.guest_zone,
+            "home_play_off_win": record.home_play_off_win,
+            "home_rank": record.home_rank,
+            "home_win_diff": record.home_win_diff,
+            "home_win_or_filr": record.home_win_or_filr,
+            "home_win_rate": record.home_win_rate,
+            "home_zone": record.home_zone,
+            "period_cn": record.period_cn,
+            "create_date": record.create_date,
+            "end_date": record.end_date,
+            "season_type": record.season_type,
+            "sdate": record.sdate,
+            "start": record.start,
+            "current_time": record.current_time,
+            "type": record.type,
+        }
+        for record in records
+    ]
+    db.execute(text(_SQL_UPSERT_GAME_LIST), params_list)
     db.commit()
-    return affected
+    return len(params_list)
 
 
 def sync_game_list_by_date(db: Session, http_client: HttpClient, *, game_date: date) -> dict[str, int | str]:

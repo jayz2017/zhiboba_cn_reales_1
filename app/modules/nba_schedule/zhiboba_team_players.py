@@ -1,6 +1,6 @@
 import re
 import json
-import random
+import time
 from typing import Any
 from dataclasses import dataclass
 
@@ -57,7 +57,7 @@ def build_nba_team_filter_sql(db: Session) -> str:
 def build_team_player_params(team_id: str) -> dict[str, str]:
     return {
         "_url": "/nba_v2/team",
-        "random": str(random.random()),
+        "random": str(int(time.time() * 1000)),
         "teamId": team_id
     }
 
@@ -68,17 +68,19 @@ def build_player_detail_params(player_id: str) -> dict[str, str]:
         "playerId": player_id,
     }
 
-def _find_first_str_value(data: Any, target_key: str) -> str | None:
+def _find_first_str_value(data: Any, target_key: str, max_depth: int = 10, _depth: int = 0) -> str | None:
+    if _depth > max_depth:
+        return None
     if isinstance(data, dict):
         for key, value in data.items():
             if key == target_key and isinstance(value, str) and value.strip():
                 return value.strip()
-            nested_value = _find_first_str_value(value, target_key)
+            nested_value = _find_first_str_value(value, target_key, max_depth=max_depth, _depth=_depth + 1)
             if nested_value:
                 return nested_value
     elif isinstance(data, list):
         for item in data:
-            nested_value = _find_first_str_value(item, target_key)
+            nested_value = _find_first_str_value(item, target_key, max_depth=max_depth, _depth=_depth + 1)
             if nested_value:
                 return nested_value
     return None
@@ -192,9 +194,16 @@ CREATE TABLE IF NOT EXISTS nba_players_name_data (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 """.strip()
 
+_players_table_ensured = False
+
+
 def ensure_players_table(db: Session) -> None:
+    global _players_table_ensured
+    if _players_table_ensured:
+        return
     db.execute(text(_DDL_CREATE_TABLE))
     db.commit()
+    _players_table_ensured = True
 
 _SQL_UPSERT = """
 INSERT INTO nba_players_name_data
@@ -216,25 +225,22 @@ def upsert_team_players(db: Session, records: list[ZhibobaTeamPlayerRecord]) -> 
     if not records:
         return 0
 
-    inserted = 0
-    for r in records:
-        db.execute(
-            text(_SQL_UPSERT),
-            {
-                "team_id": r.team_id,
-                "team_name": r.team_name,
-                "zhiboba_player_id": r.zhiboba_player_id,
-                "zhiboba_player_name": r.zhiboba_player_name,
-                "zhiboba_jersey_number": r.zhiboba_jersey_number,
-                "player_code": r.player_code,
-                "player_salary": r.player_salary,
-                "position_name": r.position_name,
-            },
-        )
-        inserted += 1
-
+    params_list = [
+        {
+            "team_id": r.team_id,
+            "team_name": r.team_name,
+            "zhiboba_player_id": r.zhiboba_player_id,
+            "zhiboba_player_name": r.zhiboba_player_name,
+            "zhiboba_jersey_number": r.zhiboba_jersey_number,
+            "player_code": r.player_code,
+            "player_salary": r.player_salary,
+            "position_name": r.position_name,
+        }
+        for r in records
+    ]
+    db.execute(text(_SQL_UPSERT), params_list)
     db.commit()
-    return inserted
+    return len(params_list)
 
 
 def get_zhiboba_team_id_by_team_id(db: Session, team_id: str) -> TeamIdMapping | None:

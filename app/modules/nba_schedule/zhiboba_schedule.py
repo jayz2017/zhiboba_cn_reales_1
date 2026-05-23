@@ -154,9 +154,16 @@ CREATE TABLE IF NOT EXISTS nba_zhiboba_yj_gamelist (
 """.strip()
 
 
+_schedule_table_ensured = False
+
+
 def ensure_zhiboba_schedule_table(db: Session) -> None:
+    global _schedule_table_ensured
+    if _schedule_table_ensured:
+        return
     db.execute(text(_DDL_CREATE_TABLE))
     db.commit()
+    _schedule_table_ensured = True
 
 
 _SQL_UPSERT = """
@@ -179,24 +186,21 @@ def upsert_zhiboba_schedule_records(db: Session, records: list[ZhibobaScheduleRe
     if not records:
         return 0
 
-    inserted = 0
-    for r in records:
-        db.execute(
-            text(_SQL_UPSERT),
-            {
-                "saishi_id": r.saishi_id,
-                "game_date": r.game_date,
-                "start_time": r.start_time,
-                "home_id": r.home_id,
-                "guest_id": r.guest_id,
-                "is_finish": r.is_finish,
-                "event_name": r.event_name,
-            },
-        )
-        inserted += 1
-
+    params_list = [
+        {
+            "saishi_id": r.saishi_id,
+            "game_date": r.game_date,
+            "start_time": r.start_time,
+            "home_id": r.home_id,
+            "guest_id": r.guest_id,
+            "is_finish": r.is_finish,
+            "event_name": r.event_name,
+        }
+        for r in records
+    ]
+    db.execute(text(_SQL_UPSERT), params_list)
     db.commit()
-    return inserted
+    return len(params_list)
 
 
 def sync_zhiboba_schedule(db: Session, http_client: HttpClient, year: int | None = None) -> dict[str, int]:

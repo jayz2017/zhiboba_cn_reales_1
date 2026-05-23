@@ -56,10 +56,12 @@ def build_zhibo8_mobile_headers() -> dict[str, str]:
     }
 
 
+# 别名：直接代理到 build_qiumibao_headers()
 def build_livetext_headers() -> dict[str, str]:
     return build_qiumibao_headers()
 
 
+# 别名：直接代理到 build_qiumibao_headers()
 def build_player_alias_headers() -> dict[str, str]:
     return build_qiumibao_headers()
 

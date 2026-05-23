@@ -21,6 +21,17 @@ class HttpClient:
         self._session = requests.Session()
         self._proxies = self._build_proxies()
 
+    def __enter__(self) -> HttpClient:
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.close()
+
+    def close(self) -> None:
+        if self._session is not None:
+            self._session.close()
+            self._session = None
+
     def _merge_headers(self, url: str, headers: dict[str, str] | None) -> dict[str, str] | None:
         merged = get_default_headers_for_url(url)
         if headers:

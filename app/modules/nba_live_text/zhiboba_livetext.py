@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.nba_live_text.nlp.tokenizer import Tokenizer
 from app.core.http_resources import QIUMIBAO_LIVETEXT_BASE_URL, build_livetext_headers
+from app.utils.db_helpers import to_int
 from app.utils.http.client import HttpClient
 
 LINE_SKIP_RULE_TYPE = "line_skip"
@@ -166,15 +167,8 @@ def parse_livetext_payload(payload: Any) -> list[ZhibobaLiveTextEventRecord]:
         pid_text = item.get("pid_text")
         pid_text_value = pid_text.strip() if isinstance(pid_text, str) and pid_text.strip() else None
 
-        def _to_int(v: Any) -> int | None:
-            if isinstance(v, int):
-                return v
-            if isinstance(v, str) and v.strip().isdigit():
-                return int(v.strip())
-            return None
-
-        home_score = _to_int(item.get("home_score"))
-        visit_score = _to_int(item.get("visit_score"))
+        home_score = to_int(item.get("home_score"))
+        visit_score = to_int(item.get("visit_score"))
         user_chn = item.get("user_chn")
         user_chn_value = user_chn.strip() if isinstance(user_chn, str) and user_chn.strip() else None
 
@@ -338,7 +332,13 @@ def normalize_live_text_filter_rules(db: Session) -> None:
     )
 
 
+_tables_ensured = False
+
+
 def ensure_live_text_tables(db: Session) -> None:
+    global _tables_ensured
+    if _tables_ensured:
+        return
     db.execute(text(_DDL_CREATE_EVENT_TABLE))
     db.execute(text(_DDL_CREATE_FILTER_RULE_TABLE))
     required_event_columns: tuple[tuple[str, str], ...] = (
@@ -390,6 +390,7 @@ def ensure_live_text_tables(db: Session) -> None:
         )
     normalize_live_text_filter_rules(db=db)
     db.commit()
+    _tables_ensured = True
 
 
 _SQL_UPSERT_EVENT = """
@@ -452,31 +453,29 @@ def upsert_live_text_events(db: Session, records: list[ZhibobaLiveTextEventRecor
     if not records:
         return 0
 
-    affected = 0
-    for r in records:
-        db.execute(
-            text(_SQL_UPSERT_EVENT),
-            {
-                "saishi_id": r.saishi_id,
-                "live_sid": r.live_sid,
-                "live_pid": r.live_pid,
-                "pid_text": r.pid_text,
-                "live_text": r.live_text,
-                "segmented_text": r.segmented_text,
-                "visit_score": r.visit_score,
-                "home_score": r.home_score,
-                "user_chn": r.user_chn,
-                "current_player_name": r.current_player_name,
-                "home_score_change": r.home_score_change,
-                "visit_score_change": r.visit_score_change,
-                "score_team_side": r.score_team_side,
-                "score_points": r.score_points,
-                "score_diff": r.score_diff,
-            },
-        )
-        affected += 1
+    params_list = [
+        {
+            "saishi_id": r.saishi_id,
+            "live_sid": r.live_sid,
+            "live_pid": r.live_pid,
+            "pid_text": r.pid_text,
+            "live_text": r.live_text,
+            "segmented_text": r.segmented_text,
+            "visit_score": r.visit_score,
+            "home_score": r.home_score,
+            "user_chn": r.user_chn,
+            "current_player_name": r.current_player_name,
+            "home_score_change": r.home_score_change,
+            "visit_score_change": r.visit_score_change,
+            "score_team_side": r.score_team_side,
+            "score_points": r.score_points,
+            "score_diff": r.score_diff,
+        }
+        for r in records
+    ]
+    db.execute(text(_SQL_UPSERT_EVENT), params_list)
     db.commit()
-    return affected
+    return len(params_list)
 
 
 def _get_game_team_context_for_saishi(db: Session, saishi_id: str) -> GameTeamContext | None:
