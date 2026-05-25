@@ -6,6 +6,7 @@ from typing import Any, Literal, Optional
 from pydantic import BaseModel, ValidationError, field_validator
 
 from app.modules.semantics.models import PlayerRelationRecord
+from app.modules.semantics.ontology import valid_relation_types
 
 
 class RelationType(str, Enum):
@@ -24,6 +25,9 @@ class RelationType(str, Enum):
         DEFENDS: 防守干扰关系（defense）
         REBOUNDS_OVER: 篮板争抢关系（defense）
         SCREEN_FOR: 掩护挡拆关系（offense）
+        FOULS_ON: 犯规关系（defense）
+        FORCES_TURNOVER: 造成失误关系（defense）
+        CONTESTS_SHOT: 干扰投篮关系（defense）
     """
     PASSES_TO = "passes_to"
     ASSIST_TO = "assist_to"
@@ -34,11 +38,14 @@ class RelationType(str, Enum):
     DEFENDS = "defends"
     REBOUNDS_OVER = "rebounds_over"
     SCREEN_FOR = "screen_for"
+    FOULS_ON = "fouls_on"
+    FORCES_TURNOVER = "forces_turnover"
+    CONTESTS_SHOT = "contests_shot"
 
     @classmethod
     def valid_values(cls) -> list[str]:
         """返回所有合法关系类型的字符串列表。"""
-        return [rt.value for rt in cls]
+        return valid_relation_types()
 
 
 class BaseRelationModel(BaseModel):

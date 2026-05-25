@@ -1,6 +1,13 @@
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.modules.semantics.constants import (
+    CONFIDENCE_DESCRIPTIONS,
+    DEFAULT_CONFIDENCE_VALUES,
+    DEFAULT_KEYWORD_GROUPS,
+    KEYWORD_CATEGORY_DESCRIPTIONS,
+)
+
 _DDL_CREATE_PLAYER_RELATION_TABLE = """
 CREATE TABLE IF NOT EXISTS nba_zhiboba_player_relation (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -156,6 +163,54 @@ CREATE TABLE IF NOT EXISTS nba_zhiboba_extraction_progress (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='关系抽取进度追踪表'
 """.strip()
 
+_DDL_CREATE_RELATION_RULE_KEYWORD_TABLE = """
+CREATE TABLE IF NOT EXISTS nba_zhiboba_relation_rule_keyword (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  category VARCHAR(64) NOT NULL COMMENT '关键词分类，如 pass/block/score',
+  keyword VARCHAR(64) NOT NULL COMMENT '中文触发关键词',
+  is_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用：1启用，0禁用',
+  description VARCHAR(255) NULL COMMENT '配置说明',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_relation_rule_keyword (category, keyword),
+  KEY idx_relation_rule_keyword_category_enabled (category, is_enabled)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='球员关系规则关键词配置表';
+""".strip()
+
+_DDL_CREATE_RELATION_CONFIDENCE_TABLE = """
+CREATE TABLE IF NOT EXISTS nba_zhiboba_relation_confidence (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  config_key VARCHAR(64) NOT NULL COMMENT '置信度配置键，如 CONFIDENCE_PASS',
+  confidence DECIMAL(5,4) NOT NULL COMMENT '置信度，范围0.0000到1.0000',
+  is_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用：1启用，0禁用',
+  description VARCHAR(255) NULL COMMENT '配置说明',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_relation_confidence_key (config_key),
+  KEY idx_relation_confidence_enabled (is_enabled)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='球员关系抽取置信度配置表';
+""".strip()
+
+_SQL_SEED_RELATION_RULE_KEYWORD = """
+INSERT INTO nba_zhiboba_relation_rule_keyword
+  (category, keyword, is_enabled, description)
+VALUES
+  (:category, :keyword, 1, :description)
+ON DUPLICATE KEY UPDATE
+  id = id
+""".strip()
+
+_SQL_SEED_RELATION_CONFIDENCE = """
+INSERT INTO nba_zhiboba_relation_confidence
+  (config_key, confidence, is_enabled, description)
+VALUES
+  (:config_key, :confidence, 1, :description)
+ON DUPLICATE KEY UPDATE
+  id = id
+""".strip()
+
 
 def ensure_player_relation_table(db: Session) -> None:
     db.execute(text(_DDL_CREATE_PLAYER_RELATION_TABLE))
@@ -167,7 +222,38 @@ def ensure_extraction_progress_table(db: Session) -> None:
     db.commit()
 
 
+def ensure_relation_rule_config_tables(db: Session) -> None:
+    db.execute(text(_DDL_CREATE_RELATION_RULE_KEYWORD_TABLE))
+    db.execute(text(_DDL_CREATE_RELATION_CONFIDENCE_TABLE))
+
+    keyword_params = [
+        {
+            "category": category,
+            "keyword": keyword,
+            "description": KEYWORD_CATEGORY_DESCRIPTIONS.get(category),
+        }
+        for category, keywords in DEFAULT_KEYWORD_GROUPS.items()
+        for keyword in keywords
+    ]
+    if keyword_params:
+        db.execute(text(_SQL_SEED_RELATION_RULE_KEYWORD), keyword_params)
+
+    confidence_params = [
+        {
+            "config_key": config_key,
+            "confidence": confidence,
+            "description": CONFIDENCE_DESCRIPTIONS.get(config_key),
+        }
+        for config_key, confidence in DEFAULT_CONFIDENCE_VALUES.items()
+    ]
+    if confidence_params:
+        db.execute(text(_SQL_SEED_RELATION_CONFIDENCE), confidence_params)
+
+    db.commit()
+
+
 __all__ = [
     "ensure_player_relation_table",
     "ensure_extraction_progress_table",
+    "ensure_relation_rule_config_tables",
 ]

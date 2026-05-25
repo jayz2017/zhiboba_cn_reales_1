@@ -812,17 +812,22 @@ class IncrementalExtractorService:
         """
         from app.modules.semantics.extractors.rule_extractor import RuleBasedExtractor
         from app.modules.semantics.repository import PlayerRelationRepository
+        from app.modules.semantics.rule_config import load_relation_rule_config
+        from app.modules.semantics.schema import ensure_relation_rule_config_tables
+        from app.modules.nba_live_text.zhiboba_livetext import load_player_segmentation_config
 
         repo = PlayerRelationRepository(db)
         all_relations: list[Any] = []
         backend_used = "rule_based"
 
         try:
-            extractor = RuleBasedExtractor()
+            ensure_relation_rule_config_tables(db=db)
+            rule_config = load_relation_rule_config(db=db)
+            extractor = RuleBasedExtractor(rule_config=rule_config)
+            segmentation_config = load_player_segmentation_config(db=db, saishi_id=saishi_id)
             all_relations = extractor.extract_from_rows(
                 rows=events,
-                db=db,
-                saishi_id=saishi_id,
+                segmentation_config=segmentation_config,
             )
             backend_used = "rule_based"
         except Exception as exc:

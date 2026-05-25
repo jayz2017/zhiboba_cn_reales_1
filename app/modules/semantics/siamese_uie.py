@@ -30,37 +30,20 @@ from app.modules.semantics.schema import (
     _DDL_CREATE_PLAYER_RELATION_TABLE,
     _SQL_UPSERT_PLAYER_RELATION,
     ensure_player_relation_table,
-)
-from app.modules.semantics.constants import (
-    _ATTACK_KEYWORDS,
-    _BLOCK_KEYWORDS,
-    _CONTEST_KEYWORDS,
-    _FOUL_KEYWORDS,
-    _HELP_DEFENSE_KEYWORDS,
-    _PASS_KEYWORDS,
-    _REBOUND_KEYWORDS,
-    _SCORE_KEYWORDS,
-    _SCREEN_KEYWORDS,
-    _STEAL_KEYWORDS,
-    _TURNOVER_KEYWORDS,
-    CONFIDENCE_ASSIST,
-    CONFIDENCE_BLOCK,
-    CONFIDENCE_PASS,
-    CONFIDENCE_PASS_LOW,
-    CONFIDENCE_REBOUND,
-    CONFIDENCE_SCORE_OVER,
-    CONFIDENCE_SCORE_OVER_CONTEST,
-    CONFIDENCE_SCORE_OVER_IMPLICIT,
-    CONFIDENCE_STEAL,
-    CONFIDENCE_ATTACK,
-    CONFIDENCE_DEFENDS_CONTEST,
+    ensure_relation_rule_config_tables,
 )
 from app.modules.semantics.context_builder import (
     _canonical_text,
     _extract_player_mentions_from_segmented_text,
     _row_score_points,
 )
+from app.modules.semantics.ontology import format_relation_sample
 from app.modules.semantics.quality_filters import QualityFilterConfig, RelationQualityFilter
+from app.modules.semantics.rule_config import (
+    RelationRuleConfig,
+    default_relation_rule_config,
+    load_relation_rule_config,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -213,26 +196,36 @@ def _best_probability(entity: dict[str, Any], relations: dict[str, Any]) -> floa
     return max(0.0, min(1.0, min(scores)))
 
 
-def _detect_defensive_relation_type(actions: list[str]) -> str:
+def _detect_defensive_relation_type(
+    actions: list[str],
+    rule_config: RelationRuleConfig | None = None,
+) -> str:
+    config = rule_config or default_relation_rule_config()
     combined = " ".join(actions)
-    if any(keyword in combined for keyword in _BLOCK_KEYWORDS):
+    if any(keyword in combined for keyword in config.keywords("block")):
         return "blocks"
-    if any(keyword in combined for keyword in _STEAL_KEYWORDS):
+    if any(keyword in combined for keyword in config.keywords("steal")):
         return "steals_from"
-    if any(keyword in combined for keyword in _FOUL_KEYWORDS):
+    if any(keyword in combined for keyword in config.keywords("foul")):
         return "fouls_on"
-    if any(keyword in combined for keyword in _TURNOVER_KEYWORDS):
+    if any(keyword in combined for keyword in config.keywords("turnover")):
         return "forces_turnover"
-    if any(keyword in combined for keyword in _CONTEST_KEYWORDS):
+    if any(keyword in combined for keyword in config.keywords("contest")):
         return "contests_shot"
     return "defends"
 
 
-def _looks_like_scoring(actions: list[str], results: list[str], score_points: int | None) -> bool:
+def _looks_like_scoring(
+    actions: list[str],
+    results: list[str],
+    score_points: int | None,
+    rule_config: RelationRuleConfig | None = None,
+) -> bool:
     if score_points is not None and score_points > 0:
         return True
+    config = rule_config or default_relation_rule_config()
     combined = " ".join(actions + results)
-    return any(keyword in combined for keyword in _SCORE_KEYWORDS)
+    return any(keyword in combined for keyword in config.keywords("score"))
 
 
 def _build_event_context_from_row(
@@ -469,7 +462,9 @@ def build_relation_records_with_rule_fallback(
     *,
     rows: list[dict[str, Any]],
     segmentation_config: PlayerSegmentationConfig,
+    rule_config: RelationRuleConfig | None = None,
 ) -> list[PlayerRelationRecord]:
+    config = rule_config or default_relation_rule_config()
     relation_records: list[PlayerRelationRecord] = []
     seen_keys: set[tuple[str, str, str, int]] = set()
     context = _FallbackContext()
@@ -493,6 +488,7 @@ def build_relation_records_with_rule_fallback(
             segmentation_config=segmentation_config,
             possession_tracker=possession_tracker,
         )
+        ctx = event_context
 
         passer = player_mentions[0] if player_mentions else context.passer
         receiver = player_mentions[1] if len(player_mentions) > 1 else None
@@ -504,8 +500,8 @@ def build_relation_records_with_rule_fallback(
         def _get_object_team(player):
             return _get_player_team_info(player or "", segmentation_config, ctx.home_score, ctx.visit_score)
 
-        if any(keyword in canonical_live_text for keyword in _PASS_KEYWORDS):
-            is_steal_event = any(keyword in canonical_live_text for keyword in _STEAL_KEYWORDS)
+        if any(keyword in canonical_live_text for keyword in config.keywords("pass")):
+            is_steal_event = any(keyword in canonical_live_text for keyword in config.keywords("steal"))
             if is_steal_event:
                 possession_tracker = possession_tracker.detect_possession_change(None, is_steal=True)
 
@@ -530,7 +526,7 @@ def build_relation_records_with_rule_fallback(
                     evidence_text=evidence_text,
                     segmented_text=segmented_text,
                     extractor_name="rule_fallback",
-                    confidence=CONFIDENCE_PASS,
+                    confidence=config.confidence("CONFIDENCE_PASS"),
                     event_context=event_context,
                     subject_team_id=sub_team[0],
                     subject_team_name=sub_team[1],
@@ -562,7 +558,7 @@ def build_relation_records_with_rule_fallback(
                     evidence_text=evidence_text,
                     segmented_text=segmented_text,
                     extractor_name="rule_fallback",
-                    confidence=CONFIDENCE_PASS_LOW,
+                    confidence=config.confidence("CONFIDENCE_PASS_LOW"),
                     event_context=event_context,
                     subject_team_id=sub_team[0],
                     subject_team_name=sub_team[1],
@@ -577,7 +573,7 @@ def build_relation_records_with_rule_fallback(
                 continue
 
         if "对位" in canonical_live_text or (
-            any(keyword in canonical_live_text for keyword in _ATTACK_KEYWORDS) and len(player_mentions) >= 2
+            any(keyword in canonical_live_text for keyword in config.keywords("attack")) and len(player_mentions) >= 2
         ):
             if len(player_mentions) >= 2:
                 attacker = player_mentions[0]
@@ -604,7 +600,7 @@ def build_relation_records_with_rule_fallback(
                     evidence_text=evidence_text,
                     segmented_text=segmented_text,
                     extractor_name="rule_fallback",
-                    confidence=CONFIDENCE_ATTACK,
+                    confidence=config.confidence("CONFIDENCE_ATTACK"),
                     event_context=event_context,
                     subject_team_id=sub_team[0],
                     subject_team_name=sub_team[1],
@@ -618,7 +614,7 @@ def build_relation_records_with_rule_fallback(
                 context = _FallbackContext(passer=context.passer, receiver=context.receiver, attacker=attacker, defender=defender)
                 continue
 
-        if any(keyword in canonical_live_text for keyword in _STEAL_KEYWORDS):
+        if any(keyword in canonical_live_text for keyword in config.keywords("steal")):
             possession_tracker = possession_tracker.detect_possession_change(None, is_steal=True)
 
             if len(player_mentions) >= 2:
@@ -646,7 +642,7 @@ def build_relation_records_with_rule_fallback(
                     evidence_text=evidence_text,
                     segmented_text=segmented_text,
                     extractor_name="rule_fallback",
-                    confidence=CONFIDENCE_STEAL,
+                    confidence=config.confidence("CONFIDENCE_STEAL"),
                     event_context=event_context,
                     subject_team_id=sub_team[0],
                     subject_team_name=sub_team[1],
@@ -660,7 +656,7 @@ def build_relation_records_with_rule_fallback(
                 context = _FallbackContext(attacker=stealer, defender=victim)
                 continue
 
-        if any(keyword in canonical_live_text for keyword in _BLOCK_KEYWORDS):
+        if any(keyword in canonical_live_text for keyword in config.keywords("block")):
             if len(player_mentions) >= 2:
                 blocker, victim = player_mentions[0], player_mentions[-1]
             elif primary_player and context.attacker and primary_player != context.attacker:
@@ -686,7 +682,7 @@ def build_relation_records_with_rule_fallback(
                     evidence_text=evidence_text,
                     segmented_text=segmented_text,
                     extractor_name="rule_fallback",
-                    confidence=CONFIDENCE_BLOCK,
+                    confidence=config.confidence("CONFIDENCE_BLOCK"),
                     event_context=event_context,
                     subject_team_id=sub_team[0],
                     subject_team_name=sub_team[1],
@@ -700,7 +696,7 @@ def build_relation_records_with_rule_fallback(
                 context = _FallbackContext(attacker=victim, defender=blocker)
                 continue
 
-        if any(keyword in canonical_live_text for keyword in _HELP_DEFENSE_KEYWORDS):
+        if any(keyword in canonical_live_text for keyword in config.keywords("help_defense")):
             defender = primary_player
             attacker = context.attacker or context.receiver
             if defender and attacker and defender != attacker:
@@ -722,7 +718,7 @@ def build_relation_records_with_rule_fallback(
                     evidence_text=evidence_text,
                     segmented_text=segmented_text,
                     extractor_name="rule_fallback",
-                    confidence=CONFIDENCE_SCORE_OVER_CONTEST,
+                    confidence=config.confidence("CONFIDENCE_SCORE_OVER_CONTEST"),
                     event_context=event_context,
                     subject_team_id=att_team[0],
                     subject_team_name=att_team[1],
@@ -749,7 +745,7 @@ def build_relation_records_with_rule_fallback(
                     evidence_text=evidence_text,
                     segmented_text=segmented_text,
                     extractor_name="rule_fallback",
-                    confidence=CONFIDENCE_DEFENDS_CONTEST,
+                    confidence=config.confidence("CONFIDENCE_DEFENDS_CONTEST"),
                     event_context=event_context,
                     subject_team_id=def_team[0],
                     subject_team_name=def_team[1],
@@ -784,7 +780,7 @@ def build_relation_records_with_rule_fallback(
                     evidence_text=evidence_text,
                     segmented_text=segmented_text,
                     extractor_name="rule_fallback",
-                    confidence=CONFIDENCE_ASSIST,
+                    confidence=config.confidence("CONFIDENCE_ASSIST"),
                     event_context=event_context,
                     subject_team_id=pass_team[0],
                     subject_team_name=pass_team[1],
@@ -814,7 +810,7 @@ def build_relation_records_with_rule_fallback(
                     evidence_text=evidence_text,
                     segmented_text=segmented_text,
                     extractor_name="rule_fallback",
-                    confidence=CONFIDENCE_SCORE_OVER,
+                    confidence=config.confidence("CONFIDENCE_SCORE_OVER"),
                     event_context=event_context,
                     subject_team_id=scorer_team[0],
                     subject_team_name=scorer_team[1],
@@ -846,7 +842,7 @@ def build_relation_records_with_rule_fallback(
                         evidence_text=evidence_text,
                         segmented_text=segmented_text,
                         extractor_name="rule_fallback",
-                        confidence=CONFIDENCE_SCORE_OVER_IMPLICIT,
+                        confidence=config.confidence("CONFIDENCE_SCORE_OVER_IMPLICIT"),
                         event_context=event_context,
                         subject_team_id=scorer_team[0],
                         subject_team_name=scorer_team[1],
@@ -860,7 +856,7 @@ def build_relation_records_with_rule_fallback(
             context = _FallbackContext(attacker=scorer, defender=context.defender)
             continue
 
-        if any(keyword in canonical_live_text for keyword in _REBOUND_KEYWORDS) and primary_player and context.attacker and primary_player != context.attacker:
+        if any(keyword in canonical_live_text for keyword in config.keywords("rebound")) and primary_player and context.attacker and primary_player != context.attacker:
             possession_tracker = possession_tracker.detect_possession_change(None, is_rebound=True)
 
             rebr_team = _get_subject_team(primary_player)
@@ -881,7 +877,7 @@ def build_relation_records_with_rule_fallback(
                 evidence_text=evidence_text,
                 segmented_text=segmented_text,
                 extractor_name="rule_fallback",
-                confidence=CONFIDENCE_REBOUND,
+                confidence=config.confidence("CONFIDENCE_REBOUND"),
                 event_context=event_context,
                 subject_team_id=rebr_team[0],
                 subject_team_name=rebr_team[1],
@@ -918,12 +914,15 @@ def build_relation_records_from_uie_result(
     uie_result: dict[str, Any],
     segmentation_config: PlayerSegmentationConfig,
     event_context: EventRelationContext,
+    rule_config: RelationRuleConfig | None = None,
 ) -> list[PlayerRelationRecord]:
     if not isinstance(uie_result, dict):
         return []
 
+    config = rule_config or default_relation_rule_config()
     relation_records: list[PlayerRelationRecord] = []
     seen_keys: set[tuple[str, str, str]] = set()
+    ctx = event_context
 
     for offense_entity in uie_result.get("进攻球员", []):
         if not isinstance(offense_entity, dict):
@@ -943,7 +942,7 @@ def build_relation_records_from_uie_result(
         confidence = _best_probability(offense_entity, relations)
         primary_action = offense_actions[0] if offense_actions else None
         primary_result = result_texts[0] if result_texts else None
-        scored = _looks_like_scoring(offense_actions, result_texts, score_points)
+        scored = _looks_like_scoring(offense_actions, result_texts, score_points, config)
 
         off_team_info = _get_player_team_info(normalized_offense, segmentation_config, ctx.home_score, ctx.visit_score)
 
@@ -977,7 +976,7 @@ def build_relation_records_from_uie_result(
                     object_team_side=off_team_info[2],
                     object_team_score=off_team_info[3],
                 )
-            if any(keyword in " ".join(offense_actions) for keyword in _SCREEN_KEYWORDS):
+            if any(keyword in " ".join(offense_actions) for keyword in config.keywords("screen")):
                 key = (helper, "screen_for", normalized_offense)
                 if key not in seen_keys:
                     seen_keys.add(key)
@@ -1055,7 +1054,7 @@ def build_relation_records_from_uie_result(
         defense_actions = _relation_texts(relations, "防守动作")
         result_texts = _relation_texts(relations, "结果")
         confidence = _best_probability(defense_entity, relations)
-        relation_type = _detect_defensive_relation_type(defense_actions)
+        relation_type = _detect_defensive_relation_type(defense_actions, config)
         primary_action = defense_actions[0] if defense_actions else None
         primary_result = result_texts[0] if result_texts else None
 
@@ -1197,6 +1196,8 @@ def extract_postgame_player_relations(
 
     ensure_live_text_tables(db=db)
     ensure_player_relation_table(db=db)
+    ensure_relation_rule_config_tables(db=db)
+    rule_config = load_relation_rule_config(db=db)
     segmentation_config = load_player_segmentation_config(db=db, saishi_id=saishi_id)
     
     rows = db.execute(
@@ -1275,6 +1276,7 @@ def extract_postgame_player_relations(
                 uie_result=raw_result,
                 segmentation_config=segmentation_config,
                 event_context=event_context,
+                rule_config=rule_config,
             )
             relation_records.extend(built_relations)
             
@@ -1300,34 +1302,7 @@ def extract_postgame_player_relations(
             for relation in built_relations:
                 if len(samples) >= max(1, int(sample_limit)):
                     break
-                samples.append(
-                    {
-                        "live_sid": relation.live_sid,
-                        "relation_type": relation.relation_type,
-                        "relation_side": relation.relation_side,
-                        "subject_player_name": relation.subject_player_name,
-                        "subject_team_id": relation.subject_team_id,
-                        "subject_team_name": relation.subject_team_name,
-                        "subject_team_side": relation.subject_team_side,
-                        "object_player_name": relation.object_player_name,
-                        "object_team_id": relation.object_team_id,
-                        "object_team_name": relation.object_team_name,
-                        "object_team_side": relation.object_team_side,
-                        "offense_team_id": relation.offense_team_id,
-                        "offense_team_name": relation.offense_team_name,
-                        "offense_team_side": relation.offense_team_side,
-                        "offense_team_points": relation.offense_team_points,
-                        "possession_number": relation.possession_number,
-                        "home_score": relation.home_score,
-                        "visit_score": relation.visit_score,
-                        "action_text": relation.action_text,
-                        "result_text": relation.result_text,
-                        "score_points": relation.score_points,
-                        "evidence_text": relation.evidence_text,
-                        "segmented_text": relation.segmented_text or "",
-                        "confidence": relation.confidence,
-                    }
-                )
+                samples.append(format_relation_sample(relation))
 
     if not relation_records and extractor.last_backend == "unavailable":
         logger.info("falling_back_to_rule_extractor", extra={"saishi_id": saishi_id})
@@ -1335,36 +1310,10 @@ def extract_postgame_player_relations(
         relation_records = build_relation_records_with_rule_fallback(
             rows=[dict(row) for row in rows],
             segmentation_config=segmentation_config,
+            rule_config=rule_config,
         )
         for relation in relation_records[: max(1, int(sample_limit))]:
-            samples.append(
-                {
-                    "live_sid": relation.live_sid,
-                    "relation_type": relation.relation_type,
-                    "relation_side": relation.relation_side,
-                    "subject_player_name": relation.subject_player_name,
-                    "subject_team_id": relation.subject_team_id,
-                    "subject_team_name": relation.subject_team_name,
-                    "subject_team_side": relation.subject_team_side,
-                    "object_player_name": relation.object_player_name,
-                    "object_team_id": relation.object_team_id,
-                    "object_team_name": relation.object_team_name,
-                    "object_team_side": relation.object_team_side,
-                    "offense_team_id": relation.offense_team_id,
-                    "offense_team_name": relation.offense_team_name,
-                    "offense_team_side": relation.offense_team_side,
-                    "offense_team_points": relation.offense_team_points,
-                    "possession_number": relation.possession_number,
-                    "home_score": relation.home_score,
-                    "visit_score": relation.visit_score,
-                    "action_text": relation.action_text,
-                    "result_text": relation.result_text,
-                    "score_points": relation.score_points,
-                    "evidence_text": relation.evidence_text,
-                    "segmented_text": relation.segmented_text or "",
-                    "confidence": relation.confidence,
-                }
-            )
+            samples.append(format_relation_sample(relation))
         if relation_records:
             extractor.last_backend = "rule_fallback"
 
@@ -1416,6 +1365,7 @@ def extract_postgame_player_relations(
         "processed": True,
         "saishi_id": saishi_id,
         "events": len(rows),
+        "relations": inserted,
         "relations_raw": len(relation_records),
         "relations_filtered": len(filtered_relations),
         "relations_inserted": inserted,

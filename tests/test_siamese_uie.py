@@ -7,7 +7,9 @@ from app.modules.semantics.siamese_uie import (
     extract_postgame_player_relations,
     normalize_segmented_text_for_uie,
 )
-from app.modules.nba_live_text.zhiboba_livetext import PlayerSegmentationConfig
+from app.modules.semantics.models import EventRelationContext, PlayerSegmentationConfig
+from app.modules.semantics.ontology import format_relation_sample
+from app.modules.semantics.validators import RelationType
 
 
 class TestSiameseUIE(unittest.TestCase):
@@ -51,17 +53,60 @@ class TestSiameseUIE(unittest.TestCase):
                     }
                 ],
             },
-            alias_to_full_name={
-                "库里": "斯蒂芬·库里",
-                "格林": "德雷蒙德·格林",
-                "霍姆格伦": "切特·霍姆格伦",
-            },
+            segmentation_config=PlayerSegmentationConfig(
+                words=["库里", "格林", "霍姆格伦"],
+                alias_to_full_name={
+                    "库里": "斯蒂芬·库里",
+                    "格林": "德雷蒙德·格林",
+                    "霍姆格伦": "切特·霍姆格伦",
+                },
+            ),
+            event_context=EventRelationContext(),
         )
 
         simplified = {(item.subject_player_name, item.relation_type, item.object_player_name) for item in result}
         self.assertIn(("斯蒂芬·库里", "assist_to", "德雷蒙德·格林"), simplified)
         self.assertIn(("德雷蒙德·格林", "scores_over", "切特·霍姆格伦"), simplified)
         self.assertIn(("切特·霍姆格伦", "defends", "德雷蒙德·格林"), simplified)
+
+    def test_relation_ontology_covers_defensive_uie_types(self) -> None:
+        valid_types = set(RelationType.valid_values())
+        self.assertIn("fouls_on", valid_types)
+        self.assertIn("forces_turnover", valid_types)
+        self.assertIn("contests_shot", valid_types)
+
+        result = build_relation_records_from_uie_result(
+            saishi_id="1780736",
+            evidence_event_id=13,
+            live_sid=641,
+            live_text="多特逼出格林失误",
+            segmented_text="多特\\逼出\\格林\\失误",
+            current_player_name="多特",
+            score_points=None,
+            uie_result={
+                "防守球员": [
+                    {
+                        "text": "多特",
+                        "probability": 0.9,
+                        "relations": {
+                            "进攻球员": [{"text": "格林", "probability": 0.89}],
+                            "防守动作": [{"text": "逼出失误", "probability": 0.88}],
+                            "结果": [{"text": "失误", "probability": 0.86}],
+                        },
+                    }
+                ]
+            },
+            segmentation_config=PlayerSegmentationConfig(
+                words=["多特", "格林"],
+                alias_to_full_name={"多特": "吕冈茨·多特", "格林": "德雷蒙德·格林"},
+            ),
+            event_context=EventRelationContext(),
+        )
+
+        self.assertEqual(result[0].relation_type, "forces_turnover")
+        sample = format_relation_sample(result[0])
+        self.assertEqual(sample["relation_label_zh"], "造成失误")
+        self.assertIn("造成", sample["display_text"])
 
     def test_extract_postgame_player_relations_returns_samples(self) -> None:
         db = Mock()
@@ -118,6 +163,9 @@ class TestSiameseUIE(unittest.TestCase):
         self.assertEqual(result["relations"], 1)
         self.assertEqual(result["backend"], "taskflow_subprocess")
         self.assertEqual(result["samples"][0]["relation_type"], "assist_to")
+        self.assertEqual(result["samples"][0]["relation_label_zh"], "助攻")
+        self.assertIn("助攻", result["samples"][0]["display_text"])
+        self.assertEqual(result["samples"][0]["evidence"]["live_sid"], 640)
 
     def test_build_relation_records_with_rule_fallback_creates_relations(self) -> None:
         rows = [
@@ -170,14 +218,17 @@ class TestSiameseUIE(unittest.TestCase):
 
         relations = build_relation_records_with_rule_fallback(
             rows=rows,
-            alias_to_full_name={
-                "亚历山大": "谢伊·吉尔杰斯-亚历山大",
-                "多特": "吕冈茨·多特",
-                "切特": "切特·霍姆格伦",
-                "切特·霍姆格伦": "切特·霍姆格伦",
-                "贾巴里": "贾巴里·史密斯",
-                "贾巴里·史密斯": "贾巴里·史密斯",
-            },
+            segmentation_config=PlayerSegmentationConfig(
+                words=["亚历山大", "多特", "切特", "贾巴里"],
+                alias_to_full_name={
+                    "亚历山大": "谢伊·吉尔杰斯-亚历山大",
+                    "多特": "吕冈茨·多特",
+                    "切特": "切特·霍姆格伦",
+                    "切特·霍姆格伦": "切特·霍姆格伦",
+                    "贾巴里": "贾巴里·史密斯",
+                    "贾巴里·史密斯": "贾巴里·史密斯",
+                },
+            ),
         )
 
         simplified = {(item.subject_player_name, item.relation_type, item.object_player_name) for item in relations}

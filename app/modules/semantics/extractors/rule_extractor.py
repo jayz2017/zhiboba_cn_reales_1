@@ -4,30 +4,6 @@ import logging
 from typing import Any
 
 from app.modules.nba_live_text.zhiboba_livetext import normalize_player_name
-from app.modules.semantics.constants import (
-    _ATTACK_KEYWORDS,
-    _BLOCK_KEYWORDS,
-    _CONTEST_KEYWORDS,
-    _FOUL_KEYWORDS,
-    _HELP_DEFENSE_KEYWORDS,
-    _PASS_KEYWORDS,
-    _REBOUND_KEYWORDS,
-    _SCORE_KEYWORDS,
-    _SCREEN_KEYWORDS,
-    _STEAL_KEYWORDS,
-    _TURNOVER_KEYWORDS,
-    CONFIDENCE_ASSIST,
-    CONFIDENCE_BLOCK,
-    CONFIDENCE_PASS,
-    CONFIDENCE_PASS_LOW,
-    CONFIDENCE_REBOUND,
-    CONFIDENCE_SCORE_OVER,
-    CONFIDENCE_SCORE_OVER_CONTEST,
-    CONFIDENCE_SCORE_OVER_IMPLICIT,
-    CONFIDENCE_STEAL,
-    CONFIDENCE_ATTACK,
-    CONFIDENCE_DEFENDS_CONTEST,
-)
 from app.modules.semantics.context_builder import (
     _canonical_text,
     _extract_player_mentions_from_segmented_text,
@@ -40,6 +16,10 @@ from app.modules.semantics.models import (
     PlayerSegmentationConfig,
     _FallbackContext,
     _PossessionTracker,
+)
+from app.modules.semantics.rule_config import (
+    RelationRuleConfig,
+    default_relation_rule_config,
 )
 
 logger = logging.getLogger(__name__)
@@ -67,10 +47,11 @@ class RuleBasedExtractor(BaseRelationExtractor):
         42
     """
 
-    def __init__(self) -> None:
+    def __init__(self, rule_config: RelationRuleConfig | None = None) -> None:
         """初始化规则抽取器实例。"""
         super().__init__()
         self.last_backend = "rule_fallback"
+        self._rule_config = rule_config or default_relation_rule_config()
 
     def extract(self, text: str) -> dict[str, Any]:
         """对单条文本执行规则匹配（接口兼容实现）。
@@ -375,10 +356,10 @@ class RuleBasedExtractor(BaseRelationExtractor):
         normalized_current: str | None,
     ) -> tuple[bool, _PossessionTracker]:
         """处理传球关键词匹配逻辑。"""
-        if not any(keyword in canonical_live_text for keyword in _PASS_KEYWORDS):
+        if not any(keyword in canonical_live_text for keyword in self._rule_config.keywords("pass")):
             return False, possession_tracker
 
-        is_steal_event = any(keyword in canonical_live_text for keyword in _STEAL_KEYWORDS)
+        is_steal_event = any(keyword in canonical_live_text for keyword in self._rule_config.keywords("steal"))
         if is_steal_event:
             possession_tracker = possession_tracker.detect_possession_change(None, is_steal=True)
 
@@ -401,7 +382,7 @@ class RuleBasedExtractor(BaseRelationExtractor):
                 score_points=None,
                 evidence_text=evidence_text,
                 segmented_text=segmented_text,
-                confidence=CONFIDENCE_PASS,
+                confidence=self._rule_config.confidence("CONFIDENCE_PASS"),
                 event_context=event_context,
                 subject_team_id=sub_team[0],
                 subject_team_name=sub_team[1],
@@ -431,7 +412,7 @@ class RuleBasedExtractor(BaseRelationExtractor):
                 score_points=None,
                 evidence_text=evidence_text,
                 segmented_text=segmented_text,
-                confidence=CONFIDENCE_PASS_LOW,
+                confidence=self._rule_config.confidence("CONFIDENCE_PASS_LOW"),
                 event_context=event_context,
                 subject_team_id=sub_team[0],
                 subject_team_name=sub_team[1],
@@ -462,7 +443,7 @@ class RuleBasedExtractor(BaseRelationExtractor):
     ) -> bool:
         """处理对位/单打关键词匹配逻辑。"""
         if "对位" not in canonical_live_text and not (
-            any(keyword in canonical_live_text for keyword in _ATTACK_KEYWORDS) and len(player_mentions) >= 2
+            any(keyword in canonical_live_text for keyword in self._rule_config.keywords("attack")) and len(player_mentions) >= 2
         ):
             return False
 
@@ -490,7 +471,7 @@ class RuleBasedExtractor(BaseRelationExtractor):
                 score_points=None,
                 evidence_text=evidence_text,
                 segmented_text=segmented_text,
-                confidence=CONFIDENCE_ATTACK,
+                confidence=self._rule_config.confidence("CONFIDENCE_ATTACK"),
                 event_context=event_context,
                 subject_team_id=sub_team[0],
                 subject_team_name=sub_team[1],
@@ -521,7 +502,7 @@ class RuleBasedExtractor(BaseRelationExtractor):
         primary_player: str | None,
     ) -> tuple[bool, _PossessionTracker]:
         """处理抢断关键词匹配逻辑。"""
-        if not any(keyword in canonical_live_text for keyword in _STEAL_KEYWORDS):
+        if not any(keyword in canonical_live_text for keyword in self._rule_config.keywords("steal")):
             return False, possession_tracker
 
         possession_tracker = possession_tracker.detect_possession_change(None, is_steal=True)
@@ -550,7 +531,7 @@ class RuleBasedExtractor(BaseRelationExtractor):
                 score_points=None,
                 evidence_text=evidence_text,
                 segmented_text=segmented_text,
-                confidence=CONFIDENCE_STEAL,
+                confidence=self._rule_config.confidence("CONFIDENCE_STEAL"),
                 event_context=event_context,
                 subject_team_id=sub_team[0],
                 subject_team_name=sub_team[1],
@@ -580,7 +561,7 @@ class RuleBasedExtractor(BaseRelationExtractor):
         primary_player: str | None,
     ) -> bool:
         """处理封盖关键词匹配逻辑。"""
-        if not any(keyword in canonical_live_text for keyword in _BLOCK_KEYWORDS):
+        if not any(keyword in canonical_live_text for keyword in self._rule_config.keywords("block")):
             return False
 
         if len(player_mentions) >= 2:
@@ -607,7 +588,7 @@ class RuleBasedExtractor(BaseRelationExtractor):
                 score_points=None,
                 evidence_text=evidence_text,
                 segmented_text=segmented_text,
-                confidence=CONFIDENCE_BLOCK,
+                confidence=self._rule_config.confidence("CONFIDENCE_BLOCK"),
                 event_context=event_context,
                 subject_team_id=sub_team[0],
                 subject_team_name=sub_team[1],
@@ -636,7 +617,7 @@ class RuleBasedExtractor(BaseRelationExtractor):
         seen_keys: set[tuple[str, str, str, int]],
     ) -> bool:
         """处理协防/干扰关键词匹配逻辑。"""
-        if not any(keyword in canonical_live_text for keyword in _HELP_DEFENSE_KEYWORDS):
+        if not any(keyword in canonical_live_text for keyword in self._rule_config.keywords("help_defense")):
             return False
 
         defender = primary_player
@@ -658,7 +639,7 @@ class RuleBasedExtractor(BaseRelationExtractor):
                 score_points=_row_score_points(row),
                 evidence_text=evidence_text,
                 segmented_text=segmented_text,
-                confidence=CONFIDENCE_SCORE_OVER_CONTEST,
+                confidence=self._rule_config.confidence("CONFIDENCE_SCORE_OVER_CONTEST"),
                 event_context=event_context,
                 subject_team_id=att_team[0],
                 subject_team_name=att_team[1],
@@ -683,7 +664,7 @@ class RuleBasedExtractor(BaseRelationExtractor):
                 score_points=None,
                 evidence_text=evidence_text,
                 segmented_text=segmented_text,
-                confidence=CONFIDENCE_DEFENDS_CONTEST,
+                confidence=self._rule_config.confidence("CONFIDENCE_DEFENDS_CONTEST"),
                 event_context=event_context,
                 subject_team_id=def_team[0],
                 subject_team_name=def_team[1],
@@ -734,7 +715,7 @@ class RuleBasedExtractor(BaseRelationExtractor):
                 score_points=score_points,
                 evidence_text=evidence_text,
                 segmented_text=segmented_text,
-                confidence=CONFIDENCE_ASSIST,
+                confidence=self._rule_config.confidence("CONFIDENCE_ASSIST"),
                 event_context=event_context,
                 subject_team_id=pass_team[0],
                 subject_team_name=pass_team[1],
@@ -763,7 +744,7 @@ class RuleBasedExtractor(BaseRelationExtractor):
                 score_points=score_points,
                 evidence_text=evidence_text,
                 segmented_text=segmented_text,
-                confidence=CONFIDENCE_SCORE_OVER,
+                confidence=self._rule_config.confidence("CONFIDENCE_SCORE_OVER"),
                 event_context=event_context,
                 subject_team_id=scorer_team[0],
                 subject_team_name=scorer_team[1],
@@ -794,7 +775,7 @@ class RuleBasedExtractor(BaseRelationExtractor):
                     score_points=score_points,
                     evidence_text=evidence_text,
                     segmented_text=segmented_text,
-                    confidence=CONFIDENCE_SCORE_OVER_IMPLICIT,
+                    confidence=self._rule_config.confidence("CONFIDENCE_SCORE_OVER_IMPLICIT"),
                     event_context=event_context,
                     subject_team_id=scorer_team[0],
                     subject_team_name=scorer_team[1],
@@ -823,7 +804,7 @@ class RuleBasedExtractor(BaseRelationExtractor):
         seen_keys: set[tuple[str, str, str, int]],
     ) -> tuple[bool, _PossessionTracker]:
         """处理篮板关键词匹配逻辑。"""
-        if not any(keyword in canonical_live_text for keyword in _REBOUND_KEYWORDS):
+        if not any(keyword in canonical_live_text for keyword in self._rule_config.keywords("rebound")):
             return False, possession_tracker
         if not primary_player or not context.attacker or primary_player == context.attacker:
             return False, possession_tracker
@@ -846,7 +827,7 @@ class RuleBasedExtractor(BaseRelationExtractor):
             score_points=None,
             evidence_text=evidence_text,
             segmented_text=segmented_text,
-            confidence=CONFIDENCE_REBOUND,
+            confidence=self._rule_config.confidence("CONFIDENCE_REBOUND"),
             event_context=event_context,
             subject_team_id=rebr_team[0],
             subject_team_name=rebr_team[1],
