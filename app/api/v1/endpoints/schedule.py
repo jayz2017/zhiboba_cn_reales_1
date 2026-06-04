@@ -14,6 +14,8 @@ from app.modules.nba_schedule.zhiboba_team_players import (
     sync_zhiboba_team_players,
     sync_zhiboba_team_players_by_master_team_id,
 )
+from app.modules.nba_live_text.nba_china_livetext import NBA_CHINA_DEFAULT_SIGN2
+from app.modules.nba_schedule.nba_china_players import sync_nba_china_players
 from app.utils.http.client import HttpClient
 
 
@@ -131,5 +133,35 @@ def bind_players_team_id_by_zhiboba_team_id_api(
         return bind_players_team_id_by_zhiboba_team_id(db=db, zhiboba_team_id=zhiboba_team_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post(
+    "/team/nba-china/players/sync",
+    summary="同步 NBA 中文网全部球员信息",
+    description=(
+        "分页请求 NBA 中文网球员列表接口，并一次性同步到 nba_players_name_data。"
+        "优先按规范化 playerCode 匹配 player_code；匹配不到时按 team_name + jerseyNo 兜底。"
+        "会更新 player_id、nba_player_name、en_player_name、nba_jersey_number 和 team_name，"
+        "仍匹配不到的球员会新增一行。"
+    ),
+    tags=["球队球员"],
+)
+def nba_china_players_sync(
+    page_size: int = Query(50, description="分页大小，默认 50，会写入请求参数 page_size"),
+    max_pages: int = Query(200, description="最大抓取页数，用于防止异常分页死循环"),
+    sign2: str = Query(NBA_CHINA_DEFAULT_SIGN2, description="NBA 中文网接口 sign2 参数"),
+    db: Session = Depends(get_db),
+) -> dict:
+    """
+    分页读取响应底部 pagination.total/page_no/page_size，直到同步完全部球员。
+    """
+    http_client = HttpClient()
+    return sync_nba_china_players(
+        db=db,
+        http_client=http_client,
+        page_size=page_size,
+        max_pages=max_pages,
+        sign2=sign2,
+    )
 
 

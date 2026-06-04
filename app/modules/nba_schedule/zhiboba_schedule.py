@@ -12,6 +12,20 @@ from sqlalchemy.orm import Session
 from app.core.http_resources import QIUMIBAO_STATS_API_URL, build_schedule_headers
 from app.utils.http.client import HttpClient
 
+"""
+直播吧赛程同步模块。
+
+拉取直播吧指定年份的常规赛/总赛程数据并落库。
+"""
+__all__ = [
+    "ZhibobaScheduleRecord",
+    "sync_zhiboba_schedule",
+    "build_zhiboba_schedule_params",
+    "parse_zhiboba_schedule",
+    "ensure_zhiboba_schedule_table",
+    "upsert_zhiboba_schedule_records",
+]
+
 @dataclass(frozen=True)
 class ZhibobaScheduleRecord:
     saishi_id: str

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import logging
 import re
-from dataclasses import dataclass, field, replace
+from dataclasses import replace
 from typing import Any
 
 from sqlalchemy import text
@@ -12,103 +13,64 @@ from app.core.http_resources import QIUMIBAO_LIVETEXT_BASE_URL, build_livetext_h
 from app.utils.db_helpers import to_int
 from app.utils.http.client import HttpClient
 
-LINE_SKIP_RULE_TYPE = "line_skip"
-CONTENT_REMOVE_RULE_TYPE = "content_remove"
-TARGET_PID_TEXT = "pid_text"
-TARGET_LIVE_TEXT = "live_text"
-MATCH_MODE_EXACT = "exact"
-MATCH_MODE_CONTAINS = "contains"
-MATCH_MODE_PREFIX = "prefix"
-
-_DEFAULT_LINE_SKIP_RULES: tuple[tuple[str, str, str, str], ...] = (
-    (LINE_SKIP_RULE_TYPE, TARGET_PID_TEXT, MATCH_MODE_EXACT, "未赛"),
-    (LINE_SKIP_RULE_TYPE, TARGET_PID_TEXT, MATCH_MODE_EXACT, "中场休息"),
-    (LINE_SKIP_RULE_TYPE, TARGET_LIVE_TEXT, MATCH_MODE_PREFIX, "@"),
+from .livetext_schema import (
+    CONTENT_REMOVE_RULE_TYPE,
+    GameTeamContext,
+    LINE_SKIP_RULE_TYPE,
+    LIVE_TEXT_SOURCE_NBA_CHINA,
+    LIVE_TEXT_SOURCE_ZHIBOBA,
+    LiveTextFilterRule,
+    MATCH_MODE_CONTAINS,
+    MATCH_MODE_EXACT,
+    MATCH_MODE_PREFIX,
+    PlayerSegmentationConfig,
+    TARGET_LIVE_TEXT,
+    TARGET_PID_TEXT,
+    ZhibobaLiveTextEventRecord,
+    ensure_live_text_tables,
+)
+from .livetext_filter import (
+    clean_live_text_for_tokenization,
+    count_line_skipped_payload_items,
+    count_pending_payload_items,
+    filter_live_text_records,
+    load_live_text_filter_rules,
+    split_filter_rules,
 )
 
-_DEFAULT_CONTENT_REMOVE_RULES: tuple[str, ...] = (
-    "啊",
-    "呀",
-    "吧",
-    "呢",
-    "吗",
-    "啦",
-    "哦",
-    "诶",
-    "哎",
-    "哈",
-    "呵",
-    "唉",
-    "嗯",
-    "呃",
-    "哇",
-    "嘛",
-    "呐",
-    "噢",
-    "！",
-    "？",
-    "，",
-    "。",
-    "、",
-    "：",
-    "；",
-    "…",
-    "（",
-    "）",
-    "(",
-    ")",
-    "[",
-    "]",
-    "【",
-    "】",
-)
+logger = logging.getLogger(__name__)
 
-_LEADING_COMMENT_PREFIX_PATTERN = re.compile(r"^@[^:：]{1,64}[:：]\s*")
+"""
+直播吧(zhiboba)直播文本处理模块。
 
-
-@dataclass(frozen=True)
-class ZhibobaLiveTextEventRecord:
-    saishi_id: str
-    live_sid: int
-    live_pid: str | None
-    pid_text: str | None
-    live_text: str
-    segmented_text: str | None
-    home_score: int | None
-    visit_score: int | None
-    user_chn: str | None
-    current_player_name: str | None = None
-    home_score_change: int | None = None
-    visit_score_change: int | None = None
-    score_team_side: str | None = None
-    score_points: int | None = None
-    score_diff: int | None = None
-
-
-@dataclass(frozen=True)
-class LiveTextFilterRule:
-    rule_type: str
-    target_field: str
-    match_mode: str
-    filter_text: str
-
-
-@dataclass(frozen=True)
-class GameTeamContext:
-    home_team_id: str
-    guest_team_id: str
-    home_team_name: str | None = None
-    guest_team_name: str | None = None
-
-
-@dataclass(frozen=True)
-class PlayerSegmentationConfig:
-    words: list[str]
-    alias_to_full_name: dict[str, str]
-    player_to_team_id: dict[str, str] = field(default_factory=dict)
-    player_to_team_name: dict[str, str] = field(default_factory=dict)
-    player_to_team_side: dict[str, str] = field(default_factory=dict)
-    game_team_context: GameTeamContext | None = None
+提供直播文本事件的抓取、解析、分词、过滤、存储等核心功能。
+"""
+__all__ = [
+    "ZhibobaLiveTextEventRecord",
+    "LiveTextFilterRule",
+    "GameTeamContext",
+    "PlayerSegmentationConfig",
+    "fetch_zhiboba_live_text_events",
+    "sync_zhiboba_live_text",
+    "ensure_live_text_tables",
+    "load_player_segmentation_config",
+    "load_player_dictionary",
+    "upsert_live_text_events",
+    "parse_livetext_payload",
+    "filter_live_text_records",
+    "clean_live_text_for_tokenization",
+    "build_segmented_text",
+    "normalize_player_tokens",
+    "normalize_player_name",
+    "enrich_records_with_game_state",
+    "count_pending_payload_items",
+    "count_line_skipped_payload_items",
+    "load_live_text_filter_rules",
+    "split_filter_rules",
+    "LIVE_TEXT_SOURCE_ZHIBOBA",
+    "LINE_SKIP_RULE_TYPE",
+    "CONTENT_REMOVE_RULE_TYPE",
+]
 
 
 def build_livetext_url(saishi_id: str, cursor: int, *, page_size: int = 10) -> str:
@@ -189,215 +151,12 @@ def parse_livetext_payload(payload: Any) -> list[ZhibobaLiveTextEventRecord]:
     return records
 
 
-_DDL_CREATE_EVENT_TABLE = """
-CREATE TABLE IF NOT EXISTS nba_zhiboba_live_text_event (
-  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  saishi_id VARCHAR(32) NOT NULL,
-  live_sid BIGINT UNSIGNED NOT NULL,
-  live_pid VARCHAR(32) NULL,
-  pid_text VARCHAR(64) NULL,
-  live_text LONGTEXT NOT NULL,
-  segmented_text LONGTEXT NULL,
-  visit_score INT NULL,
-  home_score INT NULL,
-  user_chn VARCHAR(64) NULL,
-  current_player_name VARCHAR(128) NULL,
-  home_score_change INT NULL,
-  visit_score_change INT NULL,
-  score_team_side VARCHAR(16) NULL,
-  score_points INT NULL,
-  score_diff INT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (id),
-  UNIQUE KEY uk_live_sid (live_sid),
-  KEY idx_saishi_id (saishi_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-""".strip()
-
-_DDL_CREATE_FILTER_RULE_TABLE = """
-CREATE TABLE IF NOT EXISTS nba_zhiboba_live_text_filter_rule (
-  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  rule_type VARCHAR(32) NOT NULL,
-  target_field VARCHAR(32) NOT NULL,
-  match_mode VARCHAR(16) NOT NULL DEFAULT 'contains',
-  filter_text VARCHAR(255) NOT NULL,
-  is_enabled TINYINT(1) NOT NULL DEFAULT 1,
-  sort_order INT NOT NULL DEFAULT 0,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (id),
-  UNIQUE KEY uk_rule_unique (rule_type, target_field, match_mode, filter_text),
-  KEY idx_rule_lookup (rule_type, target_field, is_enabled, sort_order)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-""".strip()
-
-_SQL_INSERT_FILTER_RULE_IGNORE = """
-INSERT IGNORE INTO nba_zhiboba_live_text_filter_rule
-  (rule_type, target_field, match_mode, filter_text, is_enabled, sort_order)
-VALUES
-  (:rule_type, :target_field, :match_mode, :filter_text, 1, :sort_order)
-""".strip()
-
-
-def normalize_live_text_filter_rules(db: Session) -> None:
-    # Migrate old live_text keyword rules to the modes the code actually expects:
-    # - "@" should skip comment lines by prefix
-    # - other live_text exact keyword rules should behave as contains
-    db.execute(
-        text(
-            """
-            DELETE src
-            FROM nba_zhiboba_live_text_filter_rule AS src
-            INNER JOIN nba_zhiboba_live_text_filter_rule AS dst
-                ON dst.rule_type = src.rule_type
-               AND dst.target_field = src.target_field
-               AND dst.filter_text = src.filter_text
-               AND dst.match_mode = :new_match_mode
-            WHERE src.rule_type = :rule_type
-              AND src.target_field = :target_field
-              AND src.match_mode = :old_match_mode
-              AND src.filter_text = :filter_text
-            """
-        ),
-        {
-            "new_match_mode": MATCH_MODE_PREFIX,
-            "rule_type": LINE_SKIP_RULE_TYPE,
-            "target_field": TARGET_LIVE_TEXT,
-            "old_match_mode": MATCH_MODE_EXACT,
-            "filter_text": "@",
-        },
-    )
-    db.execute(
-        text(
-            """
-            UPDATE nba_zhiboba_live_text_filter_rule
-            SET match_mode = :match_mode
-            WHERE rule_type = :rule_type
-              AND target_field = :target_field
-              AND match_mode = :old_match_mode
-              AND filter_text = :filter_text
-            """
-        ),
-        {
-            "match_mode": MATCH_MODE_PREFIX,
-            "rule_type": LINE_SKIP_RULE_TYPE,
-            "target_field": TARGET_LIVE_TEXT,
-            "old_match_mode": MATCH_MODE_EXACT,
-            "filter_text": "@",
-        },
-    )
-    db.execute(
-        text(
-            """
-            DELETE src
-            FROM nba_zhiboba_live_text_filter_rule AS src
-            INNER JOIN nba_zhiboba_live_text_filter_rule AS dst
-                ON dst.rule_type = src.rule_type
-               AND dst.target_field = src.target_field
-               AND dst.filter_text = src.filter_text
-               AND dst.match_mode = :new_match_mode
-            WHERE src.rule_type = :rule_type
-              AND src.target_field = :target_field
-              AND src.match_mode = :old_match_mode
-              AND src.filter_text <> :filter_text
-            """
-        ),
-        {
-            "new_match_mode": MATCH_MODE_CONTAINS,
-            "rule_type": LINE_SKIP_RULE_TYPE,
-            "target_field": TARGET_LIVE_TEXT,
-            "old_match_mode": MATCH_MODE_EXACT,
-            "filter_text": "@",
-        },
-    )
-    db.execute(
-        text(
-            """
-            UPDATE nba_zhiboba_live_text_filter_rule
-            SET match_mode = :match_mode
-            WHERE rule_type = :rule_type
-              AND target_field = :target_field
-              AND match_mode = :old_match_mode
-              AND filter_text <> :filter_text
-            """
-        ),
-        {
-            "match_mode": MATCH_MODE_CONTAINS,
-            "rule_type": LINE_SKIP_RULE_TYPE,
-            "target_field": TARGET_LIVE_TEXT,
-            "old_match_mode": MATCH_MODE_EXACT,
-            "filter_text": "@",
-        },
-    )
-
-
-_tables_ensured = False
-
-
-def ensure_live_text_tables(db: Session) -> None:
-    global _tables_ensured
-    if _tables_ensured:
-        return
-    db.execute(text(_DDL_CREATE_EVENT_TABLE))
-    db.execute(text(_DDL_CREATE_FILTER_RULE_TABLE))
-    required_event_columns: tuple[tuple[str, str], ...] = (
-        ("segmented_text", "ALTER TABLE nba_zhiboba_live_text_event ADD COLUMN segmented_text LONGTEXT NULL AFTER live_text"),
-        ("current_player_name", "ALTER TABLE nba_zhiboba_live_text_event ADD COLUMN current_player_name VARCHAR(128) NULL AFTER user_chn"),
-        ("home_score_change", "ALTER TABLE nba_zhiboba_live_text_event ADD COLUMN home_score_change INT NULL AFTER current_player_name"),
-        ("visit_score_change", "ALTER TABLE nba_zhiboba_live_text_event ADD COLUMN visit_score_change INT NULL AFTER home_score_change"),
-        ("score_team_side", "ALTER TABLE nba_zhiboba_live_text_event ADD COLUMN score_team_side VARCHAR(16) NULL AFTER visit_score_change"),
-        ("score_points", "ALTER TABLE nba_zhiboba_live_text_event ADD COLUMN score_points INT NULL AFTER score_team_side"),
-        ("score_diff", "ALTER TABLE nba_zhiboba_live_text_event ADD COLUMN score_diff INT NULL AFTER score_points"),
-    )
-    for column_name, alter_sql in required_event_columns:
-        column_exists = db.execute(
-            text(
-                """
-                SELECT 1
-                FROM information_schema.COLUMNS
-                WHERE TABLE_SCHEMA = DATABASE()
-                  AND TABLE_NAME = 'nba_zhiboba_live_text_event'
-                  AND COLUMN_NAME = :column_name
-                LIMIT 1
-                """
-            ),
-            {"column_name": column_name},
-        ).fetchone()
-        if column_exists is None:
-            db.execute(text(alter_sql))
-    for sort_order, (rule_type, target_field, match_mode, filter_text) in enumerate(_DEFAULT_LINE_SKIP_RULES, start=1):
-        db.execute(
-            text(_SQL_INSERT_FILTER_RULE_IGNORE),
-            {
-                "rule_type": rule_type,
-                "target_field": target_field,
-                "match_mode": match_mode,
-                "filter_text": filter_text,
-                "sort_order": sort_order,
-            },
-        )
-    for index, filter_text in enumerate(_DEFAULT_CONTENT_REMOVE_RULES, start=100):
-        db.execute(
-            text(_SQL_INSERT_FILTER_RULE_IGNORE),
-            {
-                "rule_type": CONTENT_REMOVE_RULE_TYPE,
-                "target_field": TARGET_LIVE_TEXT,
-                "match_mode": MATCH_MODE_CONTAINS,
-                "filter_text": filter_text,
-                "sort_order": index,
-            },
-        )
-    normalize_live_text_filter_rules(db=db)
-    db.commit()
-    _tables_ensured = True
-
-
 _SQL_UPSERT_EVENT = """
 INSERT INTO nba_zhiboba_live_text_event
   (
     saishi_id,
     live_sid,
+    source,
     live_pid,
     pid_text,
     live_text,
@@ -416,6 +175,7 @@ VALUES
   (
     :saishi_id,
     :live_sid,
+    :source,
     :live_pid,
     :pid_text,
     :live_text,
@@ -432,6 +192,7 @@ VALUES
   )
 ON DUPLICATE KEY UPDATE
   saishi_id = VALUES(saishi_id),
+  source = VALUES(source),
   live_pid = VALUES(live_pid),
   pid_text = VALUES(pid_text),
   live_text = VALUES(live_text),
@@ -457,6 +218,7 @@ def upsert_live_text_events(db: Session, records: list[ZhibobaLiveTextEventRecor
         {
             "saishi_id": r.saishi_id,
             "live_sid": r.live_sid,
+            "source": r.source,
             "live_pid": r.live_pid,
             "pid_text": r.pid_text,
             "live_text": r.live_text,
@@ -500,7 +262,29 @@ def _get_game_team_context_for_saishi(db: Session, saishi_id: str) -> GameTeamCo
             {"saishi_id": saishi_id},
         ).fetchone()
     except Exception:
-        return None
+        logger.warning("get_game_team_context_failed", extra={"saishi_id": saishi_id}, exc_info=True)
+        row = None
+
+    if not row:
+        try:
+            row = db.execute(
+                text(
+                    """
+                    SELECT
+                      home_team_id AS home_id,
+                      visit_team_id AS guest_id,
+                      home_name AS home_team_name,
+                      visit_name AS guest_team_name
+                    FROM nba_store_game_list
+                    WHERE game_id = :saishi_id
+                    LIMIT 1
+                    """
+                ),
+                {"saishi_id": saishi_id},
+            ).fetchone()
+        except Exception:
+            logger.warning("get_game_team_context_fallback_failed", extra={"saishi_id": saishi_id}, exc_info=True)
+            return None
 
     if not row:
         return None
@@ -568,9 +352,13 @@ def _collect_player_variants(row: Any) -> list[str]:
 
 
 def load_player_segmentation_config(db: Session, saishi_id: str) -> PlayerSegmentationConfig:
-    game_team_context = _get_game_team_context_for_saishi(db=db, saishi_id=saishi_id)
-    if game_team_context is None:
+    team_ids = _get_team_ids_for_saishi(db=db, saishi_id=saishi_id)
+    if team_ids is None:
         return PlayerSegmentationConfig(words=[], alias_to_full_name={})
+    game_team_context = GameTeamContext(
+        home_team_id=team_ids[0],
+        guest_team_id=team_ids[1],
+    )
 
     home_id = game_team_context.home_team_id
     guest_id = game_team_context.guest_team_id
@@ -604,7 +392,10 @@ def load_player_segmentation_config(db: Session, saishi_id: str) -> PlayerSegmen
         is not None
     )
 
+    _VALID_PLAYER_ID_SELECTS = {"np.player_id", "NULL"}
     select_player_id = "np.player_id" if player_id_column_exists else "NULL"
+    if select_player_id not in _VALID_PLAYER_ID_SELECTS:
+        select_player_id = "NULL"
 
     rows = db.execute(
         text(
@@ -723,132 +514,6 @@ def _has_game_finished(records: list[ZhibobaLiveTextEventRecord]) -> bool:
     return False
 
 
-def load_live_text_filter_rules(db: Session) -> list[LiveTextFilterRule]:
-    rows = db.execute(
-        text(
-            """
-            SELECT rule_type, target_field, match_mode, filter_text
-            FROM nba_zhiboba_live_text_filter_rule
-            WHERE is_enabled = 1
-            ORDER BY sort_order ASC, id ASC
-            """
-        )
-    ).fetchall()
-    rules: list[LiveTextFilterRule] = []
-    for row in rows:
-        rule_type = getattr(row, "rule_type", None)
-        target_field = getattr(row, "target_field", None)
-        match_mode = getattr(row, "match_mode", None)
-        filter_text = getattr(row, "filter_text", None)
-        if not all(isinstance(value, str) and value.strip() for value in (rule_type, target_field, match_mode, filter_text)):
-            continue
-        rules.append(
-            LiveTextFilterRule(
-                rule_type=rule_type.strip(),
-                target_field=target_field.strip(),
-                match_mode=match_mode.strip(),
-                filter_text=filter_text.strip(),
-            )
-        )
-    return rules
-
-
-def split_filter_rules(
-    rules: list[LiveTextFilterRule],
-) -> tuple[list[LiveTextFilterRule], list[LiveTextFilterRule]]:
-    line_skip_rules = [rule for rule in rules if rule.rule_type == LINE_SKIP_RULE_TYPE]
-    content_remove_rules = [rule for rule in rules if rule.rule_type == CONTENT_REMOVE_RULE_TYPE]
-    return line_skip_rules, content_remove_rules
-
-
-def _get_rule_target_value(*, pid_text: str | None, live_text: str, target_field: str) -> str:
-    if target_field == TARGET_PID_TEXT:
-        return (pid_text or "").strip()
-    return (live_text or "").strip()
-
-
-def _matches_filter_rule(value: str, rule: LiveTextFilterRule) -> bool:
-    if not value or not rule.filter_text:
-        return False
-    if rule.match_mode == MATCH_MODE_EXACT:
-        return value == rule.filter_text
-    if rule.match_mode == MATCH_MODE_PREFIX:
-        return value.startswith(rule.filter_text)
-    return rule.filter_text in value
-
-
-def count_pending_payload_items(payload: Any) -> int:
-    if not isinstance(payload, list):
-        return 0
-    count = 0
-    for item in payload:
-        if not isinstance(item, dict):
-            continue
-        pid_text = item.get("pid_text")
-        if isinstance(pid_text, str) and pid_text.strip() == "未赛":
-            count += 1
-    return count
-
-
-def count_line_skipped_payload_items(payload: Any, rules: list[LiveTextFilterRule]) -> int:
-    if not isinstance(payload, list):
-        return 0
-    count = 0
-    for item in payload:
-        if not isinstance(item, dict):
-            continue
-        pid_text = item.get("pid_text")
-        live_text = item.get("live_text")
-        pid_text_value = pid_text.strip() if isinstance(pid_text, str) else None
-        live_text_value = live_text.strip() if isinstance(live_text, str) else ""
-        for rule in rules:
-            target_value = _get_rule_target_value(
-                pid_text=pid_text_value,
-                live_text=live_text_value,
-                target_field=rule.target_field,
-            )
-            if _matches_filter_rule(target_value, rule):
-                count += 1
-                break
-    return count
-
-
-def _should_skip_record(record: ZhibobaLiveTextEventRecord, rules: list[LiveTextFilterRule]) -> bool:
-    for rule in rules:
-        target_value = _get_rule_target_value(
-            pid_text=record.pid_text,
-            live_text=record.live_text,
-            target_field=rule.target_field,
-        )
-        if _matches_filter_rule(target_value, rule):
-            return True
-    return False
-
-
-def filter_live_text_records(
-    records: list[ZhibobaLiveTextEventRecord], rules: list[LiveTextFilterRule]
-) -> list[ZhibobaLiveTextEventRecord]:
-    return [record for record in records if not _should_skip_record(record, rules)]
-
-
-def clean_live_text_for_tokenization(content: str, rules: list[LiveTextFilterRule]) -> str:
-    cleaned = (content or "").strip()
-    if not cleaned:
-        return ""
-    cleaned = re.sub(r"\[[^\[\]]*]", "", cleaned)
-    cleaned = _LEADING_COMMENT_PREFIX_PATTERN.sub("", cleaned)
-    cleaned = re.sub(r"^@\s*", "", cleaned)
-    for rule in rules:
-        if rule.target_field != TARGET_LIVE_TEXT or not rule.filter_text:
-            continue
-        if rule.match_mode == MATCH_MODE_EXACT:
-            if cleaned == rule.filter_text:
-                cleaned = ""
-        else:
-            cleaned = cleaned.replace(rule.filter_text, "")
-    return re.sub(r"\s+", " ", cleaned).strip()
-
-
 def build_segmented_text(tokens: list[str]) -> str | None:
     cleaned = [token.strip() for token in (tokens or []) if isinstance(token, str) and token.strip()]
     if not cleaned:
@@ -882,6 +547,7 @@ def _load_previous_score_state(
     *,
     saishi_id: str,
     min_live_sid: int,
+    source: str = LIVE_TEXT_SOURCE_ZHIBOBA,
 ) -> tuple[int | None, int | None]:
     try:
         row = db.execute(
@@ -890,14 +556,16 @@ def _load_previous_score_state(
                 SELECT home_score, visit_score
                 FROM nba_zhiboba_live_text_event
                 WHERE saishi_id = :saishi_id
+                  AND source = :source
                   AND live_sid < :min_live_sid
                 ORDER BY live_sid DESC
                 LIMIT 1
                 """
             ),
-            {"saishi_id": saishi_id, "min_live_sid": min_live_sid},
+            {"saishi_id": saishi_id, "source": source, "min_live_sid": min_live_sid},
         ).fetchone()
     except Exception:
+        logger.warning("load_previous_score_state_failed", extra={"saishi_id": saishi_id, "source": source}, exc_info=True)
         return None, None
     if row is None:
         return None, None
@@ -919,6 +587,7 @@ def enrich_records_with_game_state(
         db,
         saishi_id=ordered_records[0].saishi_id,
         min_live_sid=ordered_records[0].live_sid,
+        source=ordered_records[0].source,
     )
     enriched_records: list[ZhibobaLiveTextEventRecord] = []
 
@@ -948,6 +617,8 @@ def enrich_records_with_game_state(
         elif home_positive and visit_positive:
             score_team_side = "both"
             score_points = home_score_change + visit_score_change
+        if record.score_points is not None:
+            score_points = record.score_points
 
         enriched_records.append(
             replace(

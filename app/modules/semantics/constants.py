@@ -1,12 +1,36 @@
 from __future__ import annotations
 
+# ---------------------------------------------------------------------------
+# Keyword precision notes (T3-1)
+# Marked with "⚠ BROAD" where a keyword may match non-target text and could
+# benefit from longer patterns or context validation.
+# ---------------------------------------------------------------------------
+
+# Block keywords: "帽" is broad and may match non-block text (e.g., "帽子", "帽衫").
+# Consider using longer patterns like "盖帽"/"大帽" only, or add context validation.
 _BLOCK_KEYWORDS = ("盖帽", "封盖", "帽", "大帽")
+
+# Steal keywords: relatively precise. No obvious broad keywords.
 _STEAL_KEYWORDS = ("抢断", "断下", "断球")
+
+# Foul keywords: precise single keyword. No broad concern.
 _FOUL_KEYWORDS = ("犯规",)
+
+# Turnover keywords: multi-character patterns, relatively precise.
 _TURNOVER_KEYWORDS = ("造成失误", "逼出失误", "逼失误")
+
+# Contest keywords: "干扰" is somewhat broad (can appear in non-contest contexts,
+# e.g., "受干扰", "干扰球"). Consider adding positional or context checks.
 _CONTEST_KEYWORDS = ("干扰", "封到", "扑防")
+
+# Score keywords: each is a specific scoring-result pattern. No obvious broad keywords.
 _SCORE_KEYWORDS = ("命中", "打进", "上进", "抛进", "投进", "罚进", "扣进", "绝杀", "补进")
+
+# Screen keywords: precise two-character patterns. No broad concern.
 _SCREEN_KEYWORDS = ("挡拆", "掩护")
+
+# Pass keywords: "回球" is somewhat broad and may match contexts like
+# "回球权", "回球出界" where no pass occurs. Consider narrowing or context validation.
 _PASS_KEYWORDS = (
     "递给",
     "分给",
@@ -24,8 +48,17 @@ _PASS_KEYWORDS = (
     "击地",
     "手递手",
 )
+
+# Attack keywords: "面对" is very generic and may match non-attack contexts
+# (e.g., "面对包夹", "面对联防", "面对换防"). Consider using more specific
+# patterns like "单打面对" or requiring proximity to attacker/defender tokens.
 _ATTACK_KEYWORDS = ("对位", "面对", "单打", "强攻", "突破", "背打")
+
+# Rebound keywords: each is a specific rebound pattern. No obvious broad keywords.
 _REBOUND_KEYWORDS = ("篮板", "前场板", "后场板")
+
+# Help-defense keywords: "干扰" is shared with contest keywords; same breadth
+# concern applies. Consider distinguishing contest vs help-defense context.
 _HELP_DEFENSE_KEYWORDS = ("协防", "补防", "扑防", "干扰")
 
 CONFIDENCE_PASS = 0.68

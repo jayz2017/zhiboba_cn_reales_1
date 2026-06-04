@@ -200,9 +200,9 @@ class TestGameListByDate(unittest.TestCase):
         self.assertEqual(affected, 1)
         sql_args, sql_kwargs = db.executed[0]
         self.assertIn("INSERT INTO game_list", str(sql_args[0]))
-        self.assertEqual(sql_args[1]["type"], GAME_LIST_DEFAULT_TYPE)
-        self.assertEqual(sql_args[1]["home_id"], "6888")
-        self.assertEqual(sql_args[1]["guest_id"], "6914")
+        self.assertEqual(sql_args[1][0]["type"], GAME_LIST_DEFAULT_TYPE)
+        self.assertEqual(sql_args[1][0]["home_id"], "6888")
+        self.assertEqual(sql_args[1][0]["guest_id"], "6914")
         self.assertEqual(sql_kwargs, {})
 
     def test_sync_game_list_by_date(self) -> None:

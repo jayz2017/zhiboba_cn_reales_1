@@ -143,17 +143,17 @@ class TestSiameseUIE(unittest.TestCase):
         ]
 
         with (
-            patch("app.modules.semantics.siamese_uie.ensure_live_text_tables"),
-            patch("app.modules.semantics.siamese_uie.ensure_player_relation_table"),
+            patch("app.modules.semantics.orchestrator.ensure_live_text_tables"),
+            patch("app.modules.semantics.orchestrator.ensure_player_relation_table"),
             patch(
-                "app.modules.semantics.siamese_uie.load_player_segmentation_config",
+                "app.modules.semantics.orchestrator.load_player_segmentation_config",
                 return_value=PlayerSegmentationConfig(
                     words=["库里", "格林"],
                     alias_to_full_name={"库里": "斯蒂芬·库里", "格林": "德雷蒙德·格林"},
                 ),
             ),
-            patch("app.modules.semantics.siamese_uie.SiameseUIEExtractor", return_value=fake_extractor),
-            patch("app.modules.semantics.siamese_uie.upsert_player_relations", side_effect=lambda db, relations: len(relations)),
+            patch("app.modules.semantics.orchestrator.SiameseUIEExtractor", return_value=fake_extractor),
+            patch("app.modules.semantics.orchestrator.upsert_player_relations", side_effect=lambda db, relations: len(relations)),
         ):
             result = extract_postgame_player_relations(db=db, saishi_id="1780736", max_rows=10, sample_limit=5)
 
@@ -276,10 +276,10 @@ class TestSiameseUIE(unittest.TestCase):
         fake_extractor.extract_batch.return_value = [{}, {}, {}]
 
         with (
-            patch("app.modules.semantics.siamese_uie.ensure_live_text_tables"),
-            patch("app.modules.semantics.siamese_uie.ensure_player_relation_table"),
+            patch("app.modules.semantics.orchestrator.ensure_live_text_tables"),
+            patch("app.modules.semantics.orchestrator.ensure_player_relation_table"),
             patch(
-                "app.modules.semantics.siamese_uie.load_player_segmentation_config",
+                "app.modules.semantics.orchestrator.load_player_segmentation_config",
                 return_value=PlayerSegmentationConfig(
                     words=["亚历山大", "多特", "切特"],
                     alias_to_full_name={
@@ -290,8 +290,8 @@ class TestSiameseUIE(unittest.TestCase):
                     },
                 ),
             ),
-            patch("app.modules.semantics.siamese_uie.SiameseUIEExtractor", return_value=fake_extractor),
-            patch("app.modules.semantics.siamese_uie.upsert_player_relations", side_effect=lambda db, relations: len(relations)),
+            patch("app.modules.semantics.orchestrator.SiameseUIEExtractor", return_value=fake_extractor),
+            patch("app.modules.semantics.orchestrator.upsert_player_relations", side_effect=lambda db, relations: len(relations)),
         ):
             result = extract_postgame_player_relations(db=db, saishi_id="1780736", max_rows=10, sample_limit=5)
 

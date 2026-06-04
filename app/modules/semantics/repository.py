@@ -99,6 +99,7 @@ class PlayerRelationRepository:
                     "saishi_id": relation.saishi_id,
                     "evidence_event_id": relation.evidence_event_id,
                     "live_sid": relation.live_sid,
+                    "source": relation.source,
                     "relation_type": relation.relation_type,
                     "relation_side": relation.relation_side,
                     "subject_player_name": relation.subject_player_name,
@@ -162,6 +163,7 @@ class PlayerRelationRepository:
         self,
         saishi_id: str,
         limit: int = 50,
+        source: str | None = None,
     ) -> list[dict[str, Any]]:
         """查询指定比赛的所有球员关系记录。
 
@@ -182,6 +184,7 @@ class PlayerRelationRepository:
                           saishi_id,
                           evidence_event_id,
                           live_sid,
+                          source,
                           relation_type,
                           relation_side,
                           subject_player_name,
@@ -213,11 +216,12 @@ class PlayerRelationRepository:
                           updated_at
                         FROM nba_zhiboba_player_relation
                         WHERE saishi_id = :saishi_id
+                          AND (:source IS NULL OR source = :source)
                         ORDER BY id DESC
                         LIMIT :limit
                         """
                     ),
-                    {"saishi_id": saishi_id, "limit": max(1, int(limit))},
+                    {"saishi_id": saishi_id, "source": source, "limit": max(1, int(limit))},
                 )
                 .mappings()
                 .all()
@@ -242,7 +246,7 @@ class PlayerRelationRepository:
             )
             raise
 
-    def get_statistics(self, saishi_id: str) -> dict[str, Any]:
+    def get_statistics(self, saishi_id: str, source: str | None = None) -> dict[str, Any]:
         """获取指定比赛的球员关系统计信息。
 
         包含关系类型分布、涉及球员数量、球队覆盖率等多维度统计。
@@ -276,9 +280,10 @@ class PlayerRelationRepository:
                       MAX(updated_at) AS last_updated_at
                     FROM nba_zhiboba_player_relation
                     WHERE saishi_id = :saishi_id
+                      AND (:source IS NULL OR source = :source)
                     """
                 ),
-                {"saishi_id": saishi_id},
+                {"saishi_id": saishi_id, "source": source},
             ).mappings().one()
 
             type_rows = self._db.execute(
@@ -287,11 +292,12 @@ class PlayerRelationRepository:
                     SELECT relation_type, COUNT(*) AS cnt
                     FROM nba_zhiboba_player_relation
                     WHERE saishi_id = :saishi_id
+                      AND (:source IS NULL OR source = :source)
                     GROUP BY relation_type
                     ORDER BY cnt DESC
                     """
                 ),
-                {"saishi_id": saishi_id},
+                {"saishi_id": saishi_id, "source": source},
             ).mappings().all()
 
             team_rows = self._db.execute(
@@ -300,15 +306,17 @@ class PlayerRelationRepository:
                     SELECT DISTINCT subject_team_id, subject_team_name
                     FROM nba_zhiboba_player_relation
                     WHERE saishi_id = :saishi_id
+                      AND (:source IS NULL OR source = :source)
                       AND subject_team_id IS NOT NULL
                     UNION DISTINCT
                     SELECT DISTINCT object_team_id, object_team_name
                     FROM nba_zhiboba_player_relation
                     WHERE saishi_id = :saishi_id
+                      AND (:source IS NULL OR source = :source)
                       AND object_team_id IS NOT NULL
                     """
                 ),
-                {"saishi_id": saishi_id},
+                {"saishi_id": saishi_id, "source": source},
             ).mappings().all()
 
             extractor_rows = self._db.execute(
@@ -317,11 +325,12 @@ class PlayerRelationRepository:
                     SELECT extractor_name, COUNT(*) AS cnt
                     FROM nba_zhiboba_player_relation
                     WHERE saishi_id = :saishi_id
+                      AND (:source IS NULL OR source = :source)
                     GROUP BY extractor_name
                     ORDER BY cnt DESC
                     """
                 ),
-                {"saishi_id": saishi_id},
+                {"saishi_id": saishi_id, "source": source},
             ).mappings().all()
 
             all_player_rows = self._db.execute(
@@ -331,14 +340,16 @@ class PlayerRelationRepository:
                         SELECT subject_player_name AS player_name
                         FROM nba_zhiboba_player_relation
                         WHERE saishi_id = :saishi_id
+                          AND (:source IS NULL OR source = :source)
                         UNION
                         SELECT object_player_name AS player_name
                         FROM nba_zhiboba_player_relation
                         WHERE saishi_id = :saishi_id
+                          AND (:source IS NULL OR source = :source)
                     ) AS combined
                     """
                 ),
-                {"saishi_id": saishi_id},
+                {"saishi_id": saishi_id, "source": source},
             ).mappings().all()
 
             summary = dict(summary_row)
@@ -388,7 +399,7 @@ class PlayerRelationRepository:
             )
             raise
 
-    def delete_by_saishi_id(self, saishi_id: str) -> int:
+    def delete_by_saishi_id(self, saishi_id: str, source: str | None = None) -> int:
         """删除指定比赛的所有球员关系记录。
 
         Args:
@@ -403,9 +414,10 @@ class PlayerRelationRepository:
                     """
                     DELETE FROM nba_zhiboba_player_relation
                     WHERE saishi_id = :saishi_id
+                      AND (:source IS NULL OR source = :source)
                     """
                 ),
-                {"saishi_id": saishi_id},
+                {"saishi_id": saishi_id, "source": source},
             )
             deleted = result.rowcount
             self._db.commit()

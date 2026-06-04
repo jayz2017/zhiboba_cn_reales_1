@@ -8,6 +8,13 @@ from app.modules.nba_live_text.zhiboba_livetext import (
     fetch_zhiboba_live_text_events,
     sync_zhiboba_live_text,
 )
+from app.modules.nba_live_text.nba_china_livetext import (
+    NBA_CHINA_DEFAULT_SIGN2,
+    extract_nba_china_player_relations,
+    parse_periods,
+    sync_and_extract_nba_china_live_text,
+    sync_nba_china_live_text,
+)
 from app.modules.semantics.incremental_service import IncrementalExtractorService
 from app.utils.http.client import HttpClient
 
@@ -126,6 +133,63 @@ def zhiboba_live_text_relation_extract_incremental(
         "samples": result.samples or [],
         "error_message": result.error_message,
     }
+
+
+@router.post("/live-text/nba-china/sync", summary="同步 NBA 中文网文字直播并分词", tags=["比赛直播文本"])
+def nba_china_live_text_sync(
+    game_id: str = Query(..., description="NBA 官方 gameId，例如 0042500316"),
+    periods: str | None = Query(None, description="节次，逗号分隔；不传则从 1 开始直到 pla 为空"),
+    max_auto_period: int = Query(20, description="自动递增 period 的安全上限"),
+    sign2: str = Query(NBA_CHINA_DEFAULT_SIGN2, description="NBA 中文网接口 sign2"),
+    db: Session = Depends(get_db),
+) -> dict:
+    http_client = HttpClient()
+    return sync_nba_china_live_text(
+        db=db,
+        http_client=http_client,
+        game_id=game_id,
+        periods=parse_periods(periods),
+        sign2=sign2,
+        max_auto_period=max_auto_period,
+    )
+
+
+@router.post("/live-text/nba-china/relations/extract", summary="抽取 NBA 中文网文字直播语义关系", tags=["比赛直播文本"])
+def nba_china_live_text_relation_extract(
+    game_id: str = Query(..., description="NBA 官方 gameId，例如 0042500316"),
+    max_rows: int = Query(5000, description="最多读取多少条已分词事件"),
+    sample_limit: int = Query(20, description="返回关系抽样条数"),
+    db: Session = Depends(get_db),
+) -> dict:
+    return extract_nba_china_player_relations(
+        db=db,
+        game_id=game_id,
+        max_rows=max_rows,
+        sample_limit=sample_limit,
+    )
+
+
+@router.post("/live-text/nba-china/sync-and-extract", summary="同步 NBA 中文网文字直播、分词并抽取语义", tags=["比赛直播文本"])
+def nba_china_live_text_sync_and_extract(
+    game_id: str = Query(..., description="NBA 官方 gameId，例如 0042500316"),
+    periods: str | None = Query(None, description="节次，逗号分隔；不传则从 1 开始直到 pla 为空"),
+    max_auto_period: int = Query(20, description="自动递增 period 的安全上限"),
+    sign2: str = Query(NBA_CHINA_DEFAULT_SIGN2, description="NBA 中文网接口 sign2"),
+    max_rows: int = Query(5000, description="最多读取多少条已分词事件"),
+    sample_limit: int = Query(20, description="返回关系抽样条数"),
+    db: Session = Depends(get_db),
+) -> dict:
+    http_client = HttpClient()
+    return sync_and_extract_nba_china_live_text(
+        db=db,
+        http_client=http_client,
+        game_id=game_id,
+        periods=parse_periods(periods),
+        sign2=sign2,
+        max_auto_period=max_auto_period,
+        max_rows=max_rows,
+        sample_limit=sample_limit,
+    )
 
 
 @router.post(

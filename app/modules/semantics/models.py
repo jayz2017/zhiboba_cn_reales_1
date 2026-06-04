@@ -108,6 +108,7 @@ class PlayerRelationRecord:
     segmented_text: str | None
     extractor_name: str
     confidence: float
+    source: str = "zhiboba"
 
 
 @dataclass(frozen=True)

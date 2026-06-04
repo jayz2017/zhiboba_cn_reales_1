@@ -76,6 +76,7 @@ _SQL_GET_UNPROCESSED_EVENTS = """
 SELECT *
 FROM nba_zhiboba_live_text_event
 WHERE saishi_id = :saishi_id
+  AND source = :source
   AND segmented_text IS NOT NULL
   AND live_sid > :last_processed_live_sid
 ORDER BY live_sid ASC
@@ -86,6 +87,7 @@ _SQL_GET_ALL_EVENTS = """
 SELECT *
 FROM nba_zhiboba_live_text_event
 WHERE saishi_id = :saishi_id
+  AND source = :source
   AND segmented_text IS NOT NULL
 ORDER BY live_sid ASC
 LIMIT :max_rows
@@ -95,6 +97,7 @@ _SQL_COUNT_TOTAL_EVENTS = """
 SELECT COUNT(*) AS cnt
 FROM nba_zhiboba_live_text_event
 WHERE saishi_id = :saishi_id
+  AND source = :source
   AND segmented_text IS NOT NULL
 """
 
@@ -364,12 +367,14 @@ class ExtractionProgressTracker:
                 sql = _SQL_GET_ALL_EVENTS
                 params = {
                     "saishi_id": saishi_id,
+                    "source": "zhiboba",
                     "max_rows": max(1, int(max_rows)),
                 }
             else:
                 sql = _SQL_GET_UNPROCESSED_EVENTS
                 params = {
                     "saishi_id": saishi_id,
+                    "source": "zhiboba",
                     "last_processed_live_sid": last_sid,
                     "max_rows": max(1, int(max_rows)),
                 }
@@ -415,7 +420,7 @@ class ExtractionProgressTracker:
         try:
             row = db.execute(
                 text(_SQL_COUNT_TOTAL_EVENTS),
-                {"saishi_id": saishi_id},
+                {"saishi_id": saishi_id, "source": "zhiboba"},
             ).mappings().one()
             count = int(row["cnt"] or 0)
 

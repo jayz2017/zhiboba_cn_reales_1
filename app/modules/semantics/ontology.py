@@ -214,6 +214,7 @@ def format_relation_sample(relation: Any) -> dict[str, Any]:
 
     return {
         "live_sid": relation.live_sid,
+        "source": getattr(relation, "source", "zhiboba"),
         "relation_type": relation.relation_type,
         "relation_label_zh": definition.label_zh if definition else relation.relation_type,
         "relation_side": relation.relation_side,
@@ -242,6 +243,7 @@ def format_relation_sample(relation: Any) -> dict[str, Any]:
         "evidence": {
             "event_id": relation.evidence_event_id,
             "live_sid": relation.live_sid,
+            "source": getattr(relation, "source", "zhiboba"),
             "text": evidence_text,
             "segmented_text": segmented_text,
         },

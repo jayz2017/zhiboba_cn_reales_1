@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 from dataclasses import dataclass
@@ -12,6 +13,22 @@ from sqlalchemy.orm import Session
 
 from app.core.http_resources import QIUMIBAO_PLAYER_ALIAS_BASE_URL, build_player_alias_headers
 from app.utils.http.client import HttpClient
+
+logger = logging.getLogger(__name__)
+
+"""
+球员中文别名同步模块。
+
+从直播吧别名接口抓取球员中文别名，按 player_id+alias_name 去重落库。
+"""
+__all__ = [
+    "PlayerAliasRecord",
+    "MatchAliasSource",
+    "sync_player_aliases",
+    "list_alias_match_sources",
+    "ensure_player_alias_table",
+    "upsert_player_alias_records",
+]
 
 PLAYER_ALIAS_DEFAULT_TYPE = "NBA"
 
@@ -299,6 +316,7 @@ def sync_player_aliases(
             total_aliases += len(records)
             total_upserted += upserted
         except Exception as exc:
+            logger.warning("fetch_player_alias_failed", extra={"saishi_id": source.saishi_id, "game_date": source.game_date.isoformat()}, exc_info=True)
             failed_matches += 1
             failures.append(
                 {

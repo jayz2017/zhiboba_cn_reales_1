@@ -12,6 +12,22 @@ from app.core.http_resources import QIUMIBAO_TEAM_RANKING_API_URL, build_team_ra
 from app.utils.db_helpers import to_int, to_decimal
 from app.utils.http.client import HttpClient
 
+"""
+赛程明细同步模块。
+
+按指定日期同步赛程明细到 game_list 表，关联球队排名数据。
+"""
+__all__ = [
+    "GameListRecord",
+    "TeamRankingRecord",
+    "sync_game_list_by_date",
+    "ensure_game_list_table",
+    "upsert_game_list_records",
+    "list_game_list_source_records",
+    "fetch_team_rankings",
+    "parse_team_ranking_payload",
+]
+
 
 GAME_LIST_DEFAULT_TYPE = "NBA"
 
@@ -232,6 +248,8 @@ def normalize_start_time(value: object) -> time | None:
 
 
 def _to_win_rate_decimal(value: Any) -> Decimal | None:
+    if isinstance(value, str):
+        value = value.replace("%", "")
     decimal_value = to_decimal(value)
     if decimal_value is None:
         return None

@@ -1,3 +1,4 @@
+import logging
 import re
 import json
 import time
@@ -9,6 +10,28 @@ from sqlalchemy.orm import Session
 
 from app.core.http_resources import ZHIBO8_TEAM_DATA_API_URL, build_team_player_headers
 from app.utils.http.client import HttpClient
+
+logger = logging.getLogger(__name__)
+
+"""
+直播吧球队球员数据同步模块。
+
+负责拉取直播吧球队主页的球员列表数据，补充 player_code，并落库。
+"""
+__all__ = [
+    "ZhibobaTeamPlayerRecord",
+    "TeamIdMapping",
+    "sync_zhiboba_team_players",
+    "sync_all_zhiboba_team_players",
+    "sync_zhiboba_team_players_by_master_team_id",
+    "bind_players_team_id_by_team_name",
+    "bind_players_team_id_by_zhiboba_team_id",
+    "get_zhiboba_team_id_by_team_id",
+    "get_team_by_zhiboba_team_id",
+    "list_all_teams_with_zhiboba_team_id",
+    "ensure_players_table",
+    "upsert_team_players",
+]
 
 @dataclass
 class ZhibobaTeamPlayerRecord:
@@ -50,8 +73,13 @@ def get_nba_team_type_column(db: Session) -> str:
     return "team_type"
 
 
+_VALID_TEAM_TYPE_COLUMNS = {"team_type", "type"}
+
+
 def build_nba_team_filter_sql(db: Session) -> str:
     team_type_column = get_nba_team_type_column(db=db)
+    if team_type_column not in _VALID_TEAM_TYPE_COLUMNS:
+        team_type_column = "team_type"
     return f"UPPER(TRIM(`{team_type_column}`)) = 'NBA'"
 
 def build_team_player_params(team_id: str) -> dict[str, str]:
@@ -165,6 +193,7 @@ def enrich_players_with_player_code(
         try:
             record.player_code = fetch_player_code(http_client=http_client, player_id=record.zhiboba_player_id)
         except Exception:
+            logger.warning("fetch_player_code_failed", extra={"player_id": record.zhiboba_player_id}, exc_info=True)
             record.player_code = None
     return records
 

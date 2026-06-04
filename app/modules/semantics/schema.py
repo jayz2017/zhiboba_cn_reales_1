@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS nba_zhiboba_player_relation (
   saishi_id VARCHAR(32) NOT NULL,
   evidence_event_id BIGINT UNSIGNED NOT NULL,
   live_sid BIGINT UNSIGNED NOT NULL,
+  source VARCHAR(32) NOT NULL DEFAULT 'zhiboba',
   relation_type VARCHAR(64) NOT NULL,
   relation_side VARCHAR(16) NOT NULL,
   subject_player_name VARCHAR(128) NOT NULL,
@@ -44,8 +45,9 @@ CREATE TABLE IF NOT EXISTS nba_zhiboba_player_relation (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  UNIQUE KEY uk_relation_unique (saishi_id, evidence_event_id, relation_type, subject_player_name, object_player_name),
+  UNIQUE KEY uk_relation_source_unique (source, saishi_id, evidence_event_id, relation_type, subject_player_name, object_player_name),
   KEY idx_relation_game (saishi_id),
+  KEY idx_relation_source (source),
   KEY idx_relation_live_sid (live_sid),
   KEY idx_relation_subject (subject_player_name),
   KEY idx_relation_object (object_player_name)
@@ -58,6 +60,7 @@ INSERT INTO nba_zhiboba_player_relation
     saishi_id,
     evidence_event_id,
     live_sid,
+    source,
     relation_type,
     relation_side,
     subject_player_name,
@@ -91,6 +94,7 @@ VALUES
     :saishi_id,
     :evidence_event_id,
     :live_sid,
+    :source,
     :relation_type,
     :relation_side,
     :subject_player_name,
@@ -120,6 +124,7 @@ VALUES
     :confidence
   ) AS new_val
 ON DUPLICATE KEY UPDATE
+  source = new_val.source,
   relation_side = new_val.relation_side,
   subject_team_id = new_val.subject_team_id,
   subject_team_name = new_val.subject_team_name,
@@ -214,7 +219,96 @@ ON DUPLICATE KEY UPDATE
 
 def ensure_player_relation_table(db: Session) -> None:
     db.execute(text(_DDL_CREATE_PLAYER_RELATION_TABLE))
+    _ensure_column(
+        db=db,
+        table_name="nba_zhiboba_player_relation",
+        column_name="source",
+        alter_sql="ALTER TABLE nba_zhiboba_player_relation ADD COLUMN source VARCHAR(32) NOT NULL DEFAULT 'zhiboba' AFTER live_sid",
+    )
+    _drop_index_if_exists(
+        db=db,
+        table_name="nba_zhiboba_player_relation",
+        index_name="uk_relation_unique",
+    )
+    _ensure_index(
+        db=db,
+        table_name="nba_zhiboba_player_relation",
+        index_name="uk_relation_source_unique",
+        create_sql=(
+            "ALTER TABLE nba_zhiboba_player_relation "
+            "ADD UNIQUE KEY uk_relation_source_unique "
+            "(source, saishi_id, evidence_event_id, relation_type, subject_player_name, object_player_name)"
+        ),
+    )
+    _ensure_index(
+        db=db,
+        table_name="nba_zhiboba_player_relation",
+        index_name="idx_relation_source",
+        create_sql="ALTER TABLE nba_zhiboba_player_relation ADD KEY idx_relation_source (source)",
+    )
     db.commit()
+
+
+def _ensure_column(db: Session, *, table_name: str, column_name: str, alter_sql: str) -> None:
+    exists = db.execute(
+        text(
+            """
+            SELECT 1
+            FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = :table_name
+              AND COLUMN_NAME = :column_name
+            LIMIT 1
+            """
+        ),
+        {"table_name": table_name, "column_name": column_name},
+    ).fetchone()
+    if exists is None:
+        db.execute(text(alter_sql))
+
+
+_VALID_TABLE_NAMES = {"nba_zhiboba_player_relation"}
+_VALID_INDEX_NAMES = {"uk_relation_unique"}
+
+
+def _drop_index_if_exists(db: Session, *, table_name: str, index_name: str) -> None:
+    exists = db.execute(
+        text(
+            """
+            SELECT 1
+            FROM information_schema.STATISTICS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = :table_name
+              AND INDEX_NAME = :index_name
+            LIMIT 1
+            """
+        ),
+        {"table_name": table_name, "index_name": index_name},
+    ).fetchone()
+    if exists is not None:
+        if table_name not in _VALID_TABLE_NAMES:
+            raise ValueError(f"Invalid table name: {table_name}")
+        if index_name not in _VALID_INDEX_NAMES:
+            raise ValueError(f"Invalid index name: {index_name}")
+        db.execute(text(f"ALTER TABLE {table_name} DROP INDEX {index_name}"))
+
+
+def _ensure_index(db: Session, *, table_name: str, index_name: str, create_sql: str) -> None:
+    exists = db.execute(
+        text(
+            """
+            SELECT 1
+            FROM information_schema.STATISTICS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = :table_name
+              AND INDEX_NAME = :index_name
+            LIMIT 1
+            """
+        ),
+        {"table_name": table_name, "index_name": index_name},
+    ).fetchone()
+    if exists is None:
+        db.execute(text(create_sql))
 
 
 def ensure_extraction_progress_table(db: Session) -> None:

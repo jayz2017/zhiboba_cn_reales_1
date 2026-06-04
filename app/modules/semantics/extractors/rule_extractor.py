@@ -7,6 +7,7 @@ from app.modules.nba_live_text.zhiboba_livetext import normalize_player_name
 from app.modules.semantics.context_builder import (
     _canonical_text,
     _extract_player_mentions_from_segmented_text,
+    _get_player_team_info,
     _row_score_points,
 )
 from app.modules.semantics.extractors.base import BaseRelationExtractor
@@ -196,30 +197,6 @@ class RuleBasedExtractor(BaseRelationExtractor):
 
         return relation_records
 
-
-    @staticmethod
-    def _get_player_team_info(
-        player_name: str,
-        segmentation_config: PlayerSegmentationConfig,
-        home_score: int | None = None,
-        visit_score: int | None = None,
-    ) -> tuple[str | None, str | None, str | None, int | None]:
-        """获取球员的球队信息元组。"""
-        if not player_name or not segmentation_config.player_to_team_id:
-            return None, None, None, None
-
-        team_id = segmentation_config.player_to_team_id.get(player_name)
-        team_name = segmentation_config.player_to_team_name.get(player_name)
-        team_side = segmentation_config.player_to_team_side.get(player_name)
-
-        team_score = None
-        if team_side == "home":
-            team_score = home_score
-        elif team_side == "visit":
-            team_score = visit_score
-
-        return team_id, team_name, team_side, team_score
-
     def _build_event_context_from_row(
         self,
         row: dict[str, Any],
@@ -366,8 +343,8 @@ class RuleBasedExtractor(BaseRelationExtractor):
         if len(player_mentions) >= 2:
             passer = player_mentions[0]
             receiver = player_mentions[-1]
-            sub_team = self._get_player_team_info(passer, segmentation_config, event_context.home_score, event_context.visit_score)
-            obj_team = self._get_player_team_info(receiver, segmentation_config, event_context.home_score, event_context.visit_score)
+            sub_team = _get_player_team_info(passer, segmentation_config, event_context.home_score, event_context.visit_score)
+            obj_team = _get_player_team_info(receiver, segmentation_config, event_context.home_score, event_context.visit_score)
             self._append_relation_if_new(
                 relation_records, seen_keys,
                 saishi_id=row["saishi_id"],
@@ -396,8 +373,8 @@ class RuleBasedExtractor(BaseRelationExtractor):
             return True, possession_tracker
 
         if len(player_mentions) == 1 and context.attacker and player_mentions[0] != context.attacker:
-            sub_team = self._get_player_team_info(context.attacker, segmentation_config, event_context.home_score, event_context.visit_score)
-            obj_team = self._get_player_team_info(player_mentions[0], segmentation_config, event_context.home_score, event_context.visit_score)
+            sub_team = _get_player_team_info(context.attacker, segmentation_config, event_context.home_score, event_context.visit_score)
+            obj_team = _get_player_team_info(player_mentions[0], segmentation_config, event_context.home_score, event_context.visit_score)
             self._append_relation_if_new(
                 relation_records, seen_keys,
                 saishi_id=row["saishi_id"],
@@ -455,8 +432,8 @@ class RuleBasedExtractor(BaseRelationExtractor):
             defender = player_mentions[0] if player_mentions else None
 
         if attacker and defender and attacker != defender:
-            sub_team = self._get_player_team_info(attacker, segmentation_config, event_context.home_score, event_context.visit_score)
-            obj_team = self._get_player_team_info(defender, segmentation_config, event_context.home_score, event_context.visit_score)
+            sub_team = _get_player_team_info(attacker, segmentation_config, event_context.home_score, event_context.visit_score)
+            obj_team = _get_player_team_info(defender, segmentation_config, event_context.home_score, event_context.visit_score)
             self._append_relation_if_new(
                 relation_records, seen_keys,
                 saishi_id=row["saishi_id"],
@@ -515,8 +492,8 @@ class RuleBasedExtractor(BaseRelationExtractor):
             stealer, victim = None, None
 
         if stealer and victim:
-            sub_team = self._get_player_team_info(stealer, segmentation_config, event_context.home_score, event_context.visit_score)
-            obj_team = self._get_player_team_info(victim, segmentation_config, event_context.home_score, event_context.visit_score)
+            sub_team = _get_player_team_info(stealer, segmentation_config, event_context.home_score, event_context.visit_score)
+            obj_team = _get_player_team_info(victim, segmentation_config, event_context.home_score, event_context.visit_score)
             self._append_relation_if_new(
                 relation_records, seen_keys,
                 saishi_id=row["saishi_id"],
@@ -572,8 +549,8 @@ class RuleBasedExtractor(BaseRelationExtractor):
             blocker, victim = None, None
 
         if blocker and victim:
-            sub_team = self._get_player_team_info(blocker, segmentation_config, event_context.home_score, event_context.visit_score)
-            obj_team = self._get_player_team_info(victim, segmentation_config, event_context.home_score, event_context.visit_score)
+            sub_team = _get_player_team_info(blocker, segmentation_config, event_context.home_score, event_context.visit_score)
+            obj_team = _get_player_team_info(victim, segmentation_config, event_context.home_score, event_context.visit_score)
             self._append_relation_if_new(
                 relation_records, seen_keys,
                 saishi_id=row["saishi_id"],
@@ -623,8 +600,8 @@ class RuleBasedExtractor(BaseRelationExtractor):
         defender = primary_player
         attacker = context.attacker or context.receiver
         if defender and attacker and defender != attacker:
-            att_team = self._get_player_team_info(attacker, segmentation_config, event_context.home_score, event_context.visit_score)
-            def_team = self._get_player_team_info(defender, segmentation_config, event_context.home_score, event_context.visit_score)
+            att_team = _get_player_team_info(attacker, segmentation_config, event_context.home_score, event_context.visit_score)
+            def_team = _get_player_team_info(defender, segmentation_config, event_context.home_score, event_context.visit_score)
             self._append_relation_if_new(
                 relation_records, seen_keys,
                 saishi_id=row["saishi_id"],
@@ -699,8 +676,8 @@ class RuleBasedExtractor(BaseRelationExtractor):
 
         scorer = primary_player or context.receiver or context.attacker
         if scorer and context.passer and context.passer != scorer:
-            pass_team = self._get_player_team_info(context.passer, segmentation_config, event_context.home_score, event_context.visit_score)
-            scorer_team = self._get_player_team_info(scorer, segmentation_config, event_context.home_score, event_context.visit_score)
+            pass_team = _get_player_team_info(context.passer, segmentation_config, event_context.home_score, event_context.visit_score)
+            scorer_team = _get_player_team_info(scorer, segmentation_config, event_context.home_score, event_context.visit_score)
             self._append_relation_if_new(
                 relation_records, seen_keys,
                 saishi_id=row["saishi_id"],
@@ -728,8 +705,8 @@ class RuleBasedExtractor(BaseRelationExtractor):
             )
 
         if scorer and context.defender and context.defender != scorer:
-            scorer_team = self._get_player_team_info(scorer, segmentation_config, event_context.home_score, event_context.visit_score)
-            def_team = self._get_player_team_info(context.defender, segmentation_config, event_context.home_score, event_context.visit_score)
+            scorer_team = _get_player_team_info(scorer, segmentation_config, event_context.home_score, event_context.visit_score)
+            def_team = _get_player_team_info(context.defender, segmentation_config, event_context.home_score, event_context.visit_score)
             self._append_relation_if_new(
                 relation_records, seen_keys,
                 saishi_id=row["saishi_id"],
@@ -759,8 +736,8 @@ class RuleBasedExtractor(BaseRelationExtractor):
         if scorer and not context.defender and len(player_mentions) >= 2:
             defender = player_mentions[-1]
             if defender != scorer:
-                scorer_team = self._get_player_team_info(scorer, segmentation_config, event_context.home_score, event_context.visit_score)
-                def_team = self._get_player_team_info(defender, segmentation_config, event_context.home_score, event_context.visit_score)
+                scorer_team = _get_player_team_info(scorer, segmentation_config, event_context.home_score, event_context.visit_score)
+                def_team = _get_player_team_info(defender, segmentation_config, event_context.home_score, event_context.visit_score)
                 self._append_relation_if_new(
                     relation_records, seen_keys,
                     saishi_id=row["saishi_id"],
@@ -811,8 +788,8 @@ class RuleBasedExtractor(BaseRelationExtractor):
 
         possession_tracker = possession_tracker.detect_possession_change(None, is_rebound=True)
 
-        rebr_team = self._get_player_team_info(primary_player, segmentation_config, event_context.home_score, event_context.visit_score)
-        att_team = self._get_player_team_info(context.attacker, segmentation_config, event_context.home_score, event_context.visit_score)
+        rebr_team = _get_player_team_info(primary_player, segmentation_config, event_context.home_score, event_context.visit_score)
+        att_team = _get_player_team_info(context.attacker, segmentation_config, event_context.home_score, event_context.visit_score)
         self._append_relation_if_new(
             relation_records, seen_keys,
             saishi_id=row["saishi_id"],
