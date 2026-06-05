@@ -1,0 +1,57 @@
+# Python 字节码缓存
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# 打包分发产物
+dist/
+build/
+*.egg-info/
+*.egg
+*.whl
+
+# 虚拟环境（venv/conda）
+venv/
+env/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+*.env
+
+# IDE配置缓存
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# 日志、临时文件
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+
+# 配置密钥、本地环境变量
+.env
+*.pem
+*.key
+
+# pytest测试缓存
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 所有层级下的py缓存目录
+**/__pycache__/
+**/*.py[cod]
+
+# 全局屏蔽py缓存
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*$py.class

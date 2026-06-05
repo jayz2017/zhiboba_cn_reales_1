@@ -104,8 +104,11 @@
 ## 最终验证
 
 - [x] 所有语法检查通过 (20个文件)
-- [ ] 所有单元测试通过
-- [ ] 所有功能测试通过
+- [x] 所有单元测试通过 (176 passed, 0 failed)
+- [x] 增量服务集成测试已补充 (test_incremental_service.py 20个用例)
+- [x] 全量 API 接口测试已补充 (test_all_apis.py 40个用例)
+- [x] 缺失模块测试已补充 (test_missing_modules.py 28个用例)
+- [ ] 所有功能测试通过 (需真实环境)
 - [x] 代码行数（最大文件）< 900行 (siamese_uie.py 829行, zhiboba_livetext.py 835行)
 - [x] 代码重复率 < 5% (消除 _get_player_team_info 3处重复)
 - [x] SQL注入风险点 = 0 (3处f-string已加白名单验证)
