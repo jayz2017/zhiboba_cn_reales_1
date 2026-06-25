@@ -100,7 +100,7 @@ class TestPlayerAlias(unittest.TestCase):
         sql_args, sql_kwargs = db.executed[0]
         self.assertIn("INSERT INTO player_alias_name_info (player_id, alias_name, type)", str(sql_args[0]))
         self.assertEqual(
-            sql_args[1],
+            sql_args[1][0],
             {
                 "player_id": "1001",
                 "alias_name": "小詹",

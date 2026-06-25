@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import text
@@ -19,7 +19,7 @@ def save_schedule_raw(db: Session, source: str, season: str, payload: Any) -> in
             VALUES (:source, :season, :fetched_at, CAST(:raw_json AS JSON))
             """
         ),
-        {"source": source, "season": season, "fetched_at": datetime.utcnow(), "raw_json": raw_json},
+        {"source": source, "season": season, "fetched_at": datetime.now(timezone.utc), "raw_json": raw_json},
     )
     db.commit()
     return int(getattr(result, "lastrowid", 0) or 0)

@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     CRAWLER_HTTPS_PROXY: str | None = None
     SIAMESE_UIE_MODEL_NAME: str = "uie-base"
     SIAMESE_UIE_BATCH_SIZE: int = 8
+    SERVER_PORT: int = 9002
 
     @property
     def mysql_sqlalchemy_url(self) -> str:

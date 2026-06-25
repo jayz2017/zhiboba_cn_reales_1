@@ -1,6 +1,7 @@
+import logging
 import re
 import json
-import random
+import time
 from typing import Any
 from dataclasses import dataclass
 
@@ -9,6 +10,28 @@ from sqlalchemy.orm import Session
 
 from app.core.http_resources import ZHIBO8_TEAM_DATA_API_URL, build_team_player_headers
 from app.utils.http.client import HttpClient
+
+logger = logging.getLogger(__name__)
+
+"""
+直播吧球队球员数据同步模块。
+
+负责拉取直播吧球队主页的球员列表数据，补充 player_code，并落库。
+"""
+__all__ = [
+    "ZhibobaTeamPlayerRecord",
+    "TeamIdMapping",
+    "sync_zhiboba_team_players",
+    "sync_all_zhiboba_team_players",
+    "sync_zhiboba_team_players_by_master_team_id",
+    "bind_players_team_id_by_team_name",
+    "bind_players_team_id_by_zhiboba_team_id",
+    "get_zhiboba_team_id_by_team_id",
+    "get_team_by_zhiboba_team_id",
+    "list_all_teams_with_zhiboba_team_id",
+    "ensure_players_table",
+    "upsert_team_players",
+]
 
 @dataclass
 class ZhibobaTeamPlayerRecord:
@@ -50,14 +73,19 @@ def get_nba_team_type_column(db: Session) -> str:
     return "team_type"
 
 
+_VALID_TEAM_TYPE_COLUMNS = {"team_type", "type"}
+
+
 def build_nba_team_filter_sql(db: Session) -> str:
     team_type_column = get_nba_team_type_column(db=db)
+    if team_type_column not in _VALID_TEAM_TYPE_COLUMNS:
+        team_type_column = "team_type"
     return f"UPPER(TRIM(`{team_type_column}`)) = 'NBA'"
 
 def build_team_player_params(team_id: str) -> dict[str, str]:
     return {
         "_url": "/nba_v2/team",
-        "random": str(random.random()),
+        "random": str(int(time.time() * 1000)),
         "teamId": team_id
     }
 
@@ -68,17 +96,19 @@ def build_player_detail_params(player_id: str) -> dict[str, str]:
         "playerId": player_id,
     }
 
-def _find_first_str_value(data: Any, target_key: str) -> str | None:
+def _find_first_str_value(data: Any, target_key: str, max_depth: int = 10, _depth: int = 0) -> str | None:
+    if _depth > max_depth:
+        return None
     if isinstance(data, dict):
         for key, value in data.items():
             if key == target_key and isinstance(value, str) and value.strip():
                 return value.strip()
-            nested_value = _find_first_str_value(value, target_key)
+            nested_value = _find_first_str_value(value, target_key, max_depth=max_depth, _depth=_depth + 1)
             if nested_value:
                 return nested_value
     elif isinstance(data, list):
         for item in data:
-            nested_value = _find_first_str_value(item, target_key)
+            nested_value = _find_first_str_value(item, target_key, max_depth=max_depth, _depth=_depth + 1)
             if nested_value:
                 return nested_value
     return None
@@ -163,6 +193,7 @@ def enrich_players_with_player_code(
         try:
             record.player_code = fetch_player_code(http_client=http_client, player_id=record.zhiboba_player_id)
         except Exception:
+            logger.warning("fetch_player_code_failed", extra={"player_id": record.zhiboba_player_id}, exc_info=True)
             record.player_code = None
     return records
 
@@ -192,9 +223,16 @@ CREATE TABLE IF NOT EXISTS nba_players_name_data (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 """.strip()
 
+_players_table_ensured = False
+
+
 def ensure_players_table(db: Session) -> None:
+    global _players_table_ensured
+    if _players_table_ensured:
+        return
     db.execute(text(_DDL_CREATE_TABLE))
     db.commit()
+    _players_table_ensured = True
 
 _SQL_UPSERT = """
 INSERT INTO nba_players_name_data
@@ -216,25 +254,22 @@ def upsert_team_players(db: Session, records: list[ZhibobaTeamPlayerRecord]) -> 
     if not records:
         return 0
 
-    inserted = 0
-    for r in records:
-        db.execute(
-            text(_SQL_UPSERT),
-            {
-                "team_id": r.team_id,
-                "team_name": r.team_name,
-                "zhiboba_player_id": r.zhiboba_player_id,
-                "zhiboba_player_name": r.zhiboba_player_name,
-                "zhiboba_jersey_number": r.zhiboba_jersey_number,
-                "player_code": r.player_code,
-                "player_salary": r.player_salary,
-                "position_name": r.position_name,
-            },
-        )
-        inserted += 1
-
+    params_list = [
+        {
+            "team_id": r.team_id,
+            "team_name": r.team_name,
+            "zhiboba_player_id": r.zhiboba_player_id,
+            "zhiboba_player_name": r.zhiboba_player_name,
+            "zhiboba_jersey_number": r.zhiboba_jersey_number,
+            "player_code": r.player_code,
+            "player_salary": r.player_salary,
+            "position_name": r.position_name,
+        }
+        for r in records
+    ]
+    db.execute(text(_SQL_UPSERT), params_list)
     db.commit()
-    return inserted
+    return len(params_list)
 
 
 def get_zhiboba_team_id_by_team_id(db: Session, team_id: str) -> TeamIdMapping | None:

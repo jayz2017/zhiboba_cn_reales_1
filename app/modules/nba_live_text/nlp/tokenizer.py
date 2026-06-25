@@ -14,12 +14,13 @@ class TokenizeResult:
 
 
 class Tokenizer:
-    def __init__(self, *, batch_size: int = 8) -> None:
+    def __init__(self, *, batch_size: int = 8, subprocess_timeout: int = 180) -> None:
         self._taskflow = None
         self._jieba = None
         self._words: list[str] = []
         self._temp_dir: TemporaryDirectory[str] | None = None
         self._batch_size = max(1, int(batch_size))
+        self._subprocess_timeout = subprocess_timeout
         self._active_mode: str | None = None
         self._backend: str | None = None
 
@@ -176,7 +177,7 @@ if isinstance(result, list):
                 [sys.executable, "-X", "faulthandler", "-c", probe_code, mode],
                 capture_output=True,
                 text=True,
-                timeout=60,
+                timeout=self._subprocess_timeout,
                 env=os.environ.copy(),
             )
         except Exception:
@@ -229,7 +230,7 @@ print("TASKFLOW_BATCH_OK", flush=True)
                     [sys.executable, "-X", "faulthandler", "-c", runner_code, payload_path, result_path],
                     capture_output=True,
                     text=True,
-                    timeout=180,
+                    timeout=self._subprocess_timeout,
                     env=os.environ.copy(),
                 )
             except Exception:

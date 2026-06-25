@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Mapping
 
 import requests
 
@@ -20,6 +20,17 @@ class HttpClient:
     def __init__(self) -> None:
         self._session = requests.Session()
         self._proxies = self._build_proxies()
+
+    def __enter__(self) -> HttpClient:
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.close()
+
+    def close(self) -> None:
+        if self._session is not None:
+            self._session.close()
+            self._session = None
 
     def _merge_headers(self, url: str, headers: dict[str, str] | None) -> dict[str, str] | None:
         merged = get_default_headers_for_url(url)
@@ -42,7 +53,7 @@ class HttpClient:
         *,
         timeout_seconds: float | None = None,
         headers: dict[str, str] | None = None,
-        params: dict[str, str] | None = None,
+        params: Mapping[str, Any] | None = None,
     ) -> str:
         response = self._session.get(
             url,
@@ -61,7 +72,7 @@ class HttpClient:
         *,
         timeout_seconds: float | None = None,
         headers: dict[str, str] | None = None,
-        params: dict[str, str] | None = None,
+        params: Mapping[str, Any] | None = None,
     ) -> Any:
         response = self._session.get(
             url,
@@ -80,7 +91,7 @@ class HttpClient:
         *,
         timeout_seconds: float | None = None,
         headers: dict[str, str] | None = None,
-        params: dict[str, str] | None = None,
+        params: Mapping[str, Any] | None = None,
         allow_status_codes: set[int] | None = None,
     ) -> tuple[int, str]:
         response = self._session.get(
@@ -102,7 +113,7 @@ class HttpClient:
         *,
         timeout_seconds: float | None = None,
         headers: dict[str, str] | None = None,
-        params: dict[str, str] | None = None,
+        params: Mapping[str, Any] | None = None,
         allow_status_codes: set[int] | None = None,
     ) -> tuple[int, Any | None]:
         response = self._session.get(
